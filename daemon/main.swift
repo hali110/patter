@@ -129,7 +129,10 @@ final class Dictator: NSObject {
         boot.async {
             if shell(up).contains("up") { log("\(name): already resident (\(ms(t0))ms)"); return }
             log("\(name): loading model, first use may be slow")
-            shell("nohup \(cmd) >/dev/null 2>&1 &")
+            // Into the repo, not /dev/null: when a server dies at load (bad model,
+            // port taken, out of memory) its own stderr is the only thing that says
+            // why, and discarding it leaves the daemon reporting a bare timeout.
+            shell("nohup \(cmd) >> \(esc(rootDir + "/servers.log")) 2>&1 &")
             for _ in 0..<240 {
                 if shell(up).contains("up") { log("\(name): resident (\(ms(t0))ms)"); return }
                 Thread.sleep(forTimeInterval: 0.25)

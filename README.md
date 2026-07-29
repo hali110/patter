@@ -4,10 +4,10 @@ Local jargon-aware dictation for macOS. Hold right ⌥ anywhere, speak, release 
 text lands at the cursor. whisper.cpp (large-v3-turbo, Metal), ~400ms per
 utterance. No cloud, no telemetry.
 
-On this branch (`ai-cleanup`), **right ⌘** does the same thing but runs the
-transcript through a local 7B (llama.cpp, Qwen2.5-7B-Instruct on Metal) that turns
-thinking-out-loud into a written request — ~700ms–1.8s end to end. Right ⌥ is
-unchanged and never touches the model. Both texts go to `daemon.log`.
+**Right ⌘** does the same thing but runs the transcript through a local 7B
+(llama.cpp, Qwen2.5-7B-Instruct on Metal) that turns thinking-out-loud into a
+written request — ~700ms–1.8s end to end. Right ⌥ is unchanged and never touches
+the model. Both texts go to `daemon.log`.
 
 Project rules and the latency budget live in [CLAUDE.md](CLAUDE.md).
 

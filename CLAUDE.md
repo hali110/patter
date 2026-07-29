@@ -9,7 +9,11 @@ Break one of these and it is no longer this project.
 
 1. **Local only.** No network except `127.0.0.1`. No cloud STT, no telemetry, no
    analytics, no crash reporting, no auto-update check.
-2. **Own the stack.** Runtime deps are Apple frameworks + Homebrew `whisper-cpp`.
+2. **Own the stack.** Runtime deps are Apple frameworks, Homebrew `whisper-cpp`,
+   and Homebrew `llama.cpp` for the right-⌘ path. Both are the same upstream
+   project family and speak the same resident-server shape, which is why
+   `llama.cpp` was chosen over Ollama — a second runtime and model store to own
+   would have bought nothing. `jq` is macOS's own `/usr/bin/jq`, not a new dep.
    No Hammerspoon, no Electron, no Python runtime, no third-party Swift packages.
    The daemon builds with a single `swiftc` invocation and always will.
 3. **One text pipeline.** Daemon and CLI both transcribe through `transcribe.sh`.
@@ -18,12 +22,12 @@ Break one of these and it is no longer this project.
    settings UI. Features that do not reduce time-from-speech-to-correct-text are
    rejected on sight.
 
-> **Branch `ai-cleanup` deliberately strains invariant 4.** Restructuring speech
-> into a written request is arguably a second job, and it is on trial here rather
-> than on main for exactly that reason. It earns merge only if it makes
-> time-from-speech-to-*usable*-prompt shorter in real use. It does not get to
-> slow down, complicate, or add a failure mode to plain dictation — and if the
-> two ever conflict, plain dictation wins and this gets deleted.
+> **The right-⌘ refine path deliberately strains invariant 4.** Restructuring
+> speech into a written request is arguably a second job. It stays only as long as
+> it makes time-from-speech-to-*usable*-prompt shorter in real use, and it does not
+> get to slow down, complicate, or add a failure mode to plain dictation. If the
+> two ever conflict, plain dictation wins and this comes out. It is one key, one
+> script and one prompt file precisely so that removing it stays a small change.
 
 ## Latency budget
 
@@ -136,7 +140,7 @@ sed supports it and unanchored rules corrupt real words (`network tree` →
 `dictate test`, `dictate bench`. Never a multi-step terminal runbook, never a
 manual `swiftc` incantation in the README.
 
-## The refine path (branch `ai-cleanup`)
+## The refine path (right ⌘)
 
 Right ⌘ does capture → `transcribe.sh` → `refine.sh` → paste. Right ⌥ is
 untouched and never reaches the model.

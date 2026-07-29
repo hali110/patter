@@ -12,6 +12,10 @@ REFINE_MODEL="$DIR/models/refine-q4.gguf"
 REFINE_URL="https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 APP="$DIR/DictateDaemon.app"
 LOG="$DIR/daemon.log"
+# Everything this tool produces stays inside the checkout — logs, scratch audio,
+# models. Nothing in /tmp: a server that dies at load leaves its reason in a file
+# that is still there tomorrow, next to the code that started it.
+SERVERLOG="$DIR/servers.log"
 PORT=8090
 REFINE_PORT=8091
 TAB="$(printf '\t')"
@@ -182,9 +186,9 @@ refine-test)
 
 bench)
   command -v whisper-server >/dev/null || { echo "whisper-cpp not installed — run: dictate doctor"; exit 1; }
-  TMP="${TMPDIR:-/tmp}/dictate-bench"; mkdir -p "$TMP"
+  TMP="$DIR/.bench-tmp"; mkdir -p "$TMP"
   server_up || { echo "starting whisper-server (cold load ~10s)..."
-    nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >/dev/null 2>&1 &
+    nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >> "$SERVERLOG" 2>&1 &
     until server_up; do sleep 0.2; done; }
 
   echo "transcription latency (resident model, Metal):"
@@ -243,10 +247,10 @@ log)
 
 "")
   [ -f "$MODEL" ] || { echo "model missing — run: dictate doctor"; exit 1; }
-  WAV="${TMPDIR:-/tmp}/dictate-rec.wav"
+  WAV="$DIR/.dictate-rec.wav"
   if ! server_up; then
     echo "loading model into whisper-server..."
-    nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >/dev/null 2>&1 &
+    nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >> "$SERVERLOG" 2>&1 &
     until server_up; do sleep 0.2; done
   fi
   echo "dictate ready — transcripts print here AND land on the clipboard (⌘V anywhere)"

@@ -8,3 +8,7 @@ DictateDaemon.app/Contents/_CodeSignature/
 daemon.log
 daemon.log.1
 .DS_Store
+servers.log
+.bench-tmp/
+.probe-tmp/
+.dictate-rec.wav
