@@ -22,9 +22,29 @@ Measure lvt in sqft	Measure LVT in sqft
 Mark it x fail	Mark it xfail
 Check out the work tree	Check out the worktree
 Read claude md first	Read CLAUDE.md first
+Deploy to Tyler01	Deploy to tyler01
+Deploy to Tyler 01	Deploy to tyler01
+Deploy to Tyler 00	Deploy to tyler00
+Deploy to Tyler Zero-One	Deploy to tyler01
+Export it to oncs	Export it to ONNX
+Mark it zfail	Mark it xfail
+Mark it z fail	Mark it xfail
+Run onks on the jetson	Run ONNX on the jetson
+Export it to anx	Export it to ONNX
+Run roff on the repo	Run ruff on the repo
+# Caught in real dictation, not synthesised.
+Restart the whisper damien	Restart the whisper daemon
+Try lama cpp locally	Try llama.cpp locally
+Try llama cpp locally	Try llama.cpp locally
+It uses whisper cpp	It uses whisper.cpp
+Ask claw code to fix it	Ask Claude Code to fix it
+Follow my user claw conventions	Follow my user CLAUDE conventions
 # Negative cases: real words that unanchored rules used to corrupt.
 Trace the network tree	Trace the network tree
 The bulldozer worked fine	The bulldozer worked fine
 Repaint the pinpointer	Repaint the pinpointer
+The bear raised its claw	The bear raised its claw
+The user clawed at the door	The user clawed at the door
+The robo claw driver stalled	The RoboClaw driver stalled
 # Whitespace normalisation.
   padded   text  	padded text

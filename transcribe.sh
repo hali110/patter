@@ -4,7 +4,10 @@
 # so a jargon or replacement fix lands in both paths at once.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 MODEL="$DIR/models/ggml-large-v3-turbo.bin"
-PROMPT="$(cat "$DIR/jargon.txt")"
+# Comments stripped so jargon.txt can carry its own ordering rules — the fact that
+# bias is recency-weighted (most important term LAST) is too surprising to leave undocumented
+# at the point of edit, and anything not stripped here would become part of the prompt.
+PROMPT="$(grep -v '^#' "$DIR/jargon.txt")"
 
 if [ ! -f "$1" ]; then
   echo "transcribe: no such audio file: $1" >&2

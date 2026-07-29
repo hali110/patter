@@ -47,6 +47,9 @@ terminal child it is attributed to the terminal and the grants are ignored.
 
 ## Tuning
 
-- `jargon.txt` — vocabulary bias fed to whisper as a decode prompt (~224-token budget).
+- `jargon.txt` — vocabulary bias fed to whisper as a decode prompt. Bias is
+  recency-weighted: **put the most important terms last, and keep the list short.**
+  Only about the last 15 terms have any effect, and a term whisper already gets
+  right wastes one of those slots. Measured, not folklore — see CLAUDE.md.
 - `replacements.sed` — deterministic fixes for recurring mishears. Word-anchor every
   rule and add a case to `tests/replacements.tsv`, then `dictate test`.

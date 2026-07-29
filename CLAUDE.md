@@ -38,6 +38,25 @@ Facts that constrain the design, established by measurement:
   420ms). Whisper pads to a 30-second window. Shorter utterances do not get
   faster, so there is no reason to nudge the user toward short bursts.
 - **Jargon prompt costs ~20ms** (310ms → 330ms). Cheap. Keep biasing.
+- **Glossary bias is recency-weighted, so the glossary must be short and ordered
+  with the most important terms LAST.** Whisper conditions the decoder on the
+  prompt as if it were text preceding the audio, so the terms nearest the end
+  dominate and only roughly the last 15 do anything at all. Measured on one
+  fixed clip: with the old 80-term glossary, `Wattson` (4th term) and `pixi`
+  (12th) transcribed as "Watson" and "pixie" — *character-identical to sending
+  no prompt at all*. Moving either to the end of the same 80-term list fixed it
+  immediately. Reordering and cutting the list to 36 terms fixed `pytest`
+  ("Piedest"), `pixi`, `ZUPT` ("ZUP"), `Wattson`, `mypy`, `ruff` and `AprilTag`
+  with no code change. Corollary: **a term whisper already gets right is not
+  free** — it consumes one of the few live slots. Verified-unaided terms are
+  listed in `jargon.txt` as deliberately absent; do not re-add them.
+- **Which fixes belong in `jargon.txt` vs `replacements.sed`** follows from the
+  above. `replacements.sed` is deterministic and unbounded, the glossary is
+  scarce and probabilistic. A mishear whose *wrong* form is not real English
+  (`onks`/`oncs`/`anx` → ONNX, `zfail` → xfail) is a sed rule. A term whose
+  mishear collides with real English belongs in the glossary and nowhere else:
+  `mypy` is heard as "might be", which no anchored rule can fix without
+  corrupting the phrase.
 - **The model is resident and GPU-backed.** `whisper-server` holds ~2GB and runs
   on the Metal backend with flash attention. If a transcript takes 10s, the
   server died and `transcribe.sh` silently fell back to `whisper-cli` — check the
@@ -86,7 +105,7 @@ product's black box, and keep it greppable and bounded.
 **Text fixes are data, not code.** New mishears go in `replacements.sed`
 (word-anchored) or `jargon.txt`. Anchor every rule with `[[:<:]]…[[:>:]]` — BSD
 sed supports it and unanchored rules corrupt real words (`network tree` →
-`networktree`). Every rule added needs a case in `tests/cases.tsv`.
+`networktree`). Every rule added needs a case in `tests/replacements.tsv`.
 
 **Operator actions are one command.** `dictate build`, `dictate doctor`,
 `dictate test`, `dictate bench`. Never a multi-step terminal runbook, never a
@@ -110,7 +129,7 @@ Hard-won; re-deriving these costs hours.
 
 ## Testing
 
-`dictate test` runs `tests/cases.tsv` through `transcribe.sh` using
+`dictate test` runs `tests/replacements.tsv` through `transcribe.sh` using
 `say`-synthesized audio. It covers the text pipeline (jargon bias + replacements),
 which is where regressions actually happen. Real-mic accuracy cannot be tested
 here and is validated by use.
