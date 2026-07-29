@@ -1,0 +1,44 @@
+#!/bin/sh
+# dictate — terminal push-to-talk. Enter = record, Enter = stop; transcript -> stdout + clipboard.
+# `dictate stop` shuts down the resident whisper-server (frees ~2GB RAM).
+SRC="$0"; [ -L "$SRC" ] && SRC="$(readlink "$SRC")"
+DIR="$(cd "$(dirname "$SRC")" && pwd)"
+MODEL="$DIR/models/ggml-large-v3-turbo.bin"
+WAV="${TMPDIR:-/tmp}/dictate-rec.wav"
+
+if [ "$1" = "stop" ]; then
+  pkill -f "dictate-daemon" 2>/dev/null && echo "daemon stopped"
+  pkill -f "whisper-server -m" 2>/dev/null && echo "whisper-server stopped" || echo "server not running"
+  exit 0
+fi
+
+if [ "$1" = "start" ] || [ "$1" = "daemon" ]; then
+  pgrep -f "dictate-daemon" >/dev/null && { echo "already running (mic icon in menu bar)"; exit 0; }
+  nohup "$DIR/bin/dictate-daemon" >> "$DIR/daemon.log" 2>&1 &
+  sleep 1
+  if pgrep -f "dictate-daemon" >/dev/null; then
+    echo "mic icon in menu bar — hold right ⌥ anywhere to dictate (log: $DIR/daemon.log)"
+  else
+    tail -5 "$DIR/daemon.log"
+  fi
+  exit 0
+fi
+
+if ! curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:8090/; then
+  echo "loading model into whisper-server..."
+  nohup whisper-server -m "$MODEL" --port 8090 --host 127.0.0.1 >/dev/null 2>&1 &
+  until curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:8090/; do sleep 0.2; done
+fi
+
+echo "dictate ready — transcripts print here AND land on the clipboard (⌘V anywhere)"
+while :; do
+  printf '\n[Enter] record · [q] quit > '
+  read -r k || exit 0; [ "$k" = "q" ] && exit 0
+  ffmpeg -y -loglevel quiet -f avfoundation -i ":0" -ar 16000 -ac 1 "$WAV" &
+  FPID=$!
+  printf '🎤 recording... [Enter] stop > '
+  read -r _
+  kill -INT "$FPID" 2>/dev/null; wait "$FPID" 2>/dev/null
+  txt="$(sh "$DIR/transcribe.sh" "$WAV")"
+  if [ -n "$txt" ]; then printf '%s' "$txt" | pbcopy; printf '📋 %s\n' "$txt"; else echo "(no speech)"; fi
+done

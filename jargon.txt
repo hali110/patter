@@ -1,0 +1,52 @@
+# Whisper --prompt bias. Lines starting with # are stripped by transcribe.sh.
+#
+# ORDER MATTERS AND THE LIST IS SHORT ON PURPOSE. Measured: whisper conditions
+# the decoder on this text as if it preceded the audio, so bias is recency
+# weighted — only roughly the last 15 terms do anything. In the old 80-term
+# glossary, "tyler01" (3rd term) and "Wattson" (4th) were completely inert:
+# their transcripts were identical to passing no prompt at all.
+#
+# So: PUT THE MOST IMPORTANT TERMS LAST, and do not add a term whisper already
+# gets right — it costs a slot and buys nothing.
+#
+# YOUR OWN VOCABULARY DOES NOT GO IN THIS FILE. Create `jargon.local.txt` — it is
+# gitignored, and transcribe.sh appends it after this list, so your terms land in
+# the live slots without evicting anyone else's. That indirection exists precisely
+# because the list is length-capped: if everyone appended here, the last committed
+# term would win and every earlier contributor's vocabulary would go quietly inert.
+# This file is the shared baseline and changing it is a review question.
+#
+# AUDITED 2026-08-01 against 623 real takes, and the list below was wrong twice.
+# (1) It claimed Teensy, Jetson and OAK-D were "deliberately absent" while all three
+#     are in the Glossary line below — Teensy also has a replacements.sed rule, so it
+#     is covered three times and sits at position 25, inside the live window. That is
+#     a scarce slot spent on a term this very comment says does not need one.
+# (2) "Verified" overstated it. 11 of the 21 remaining terms occur ZERO times in the
+#     corpus (lidar, firmware, servo, EKF, covariance, divergence, dead reckoning,
+#     Electron, iPad, webpack, and OAK-D), so nothing about them has been verified —
+#     Haider simply has not said them. Absence of a mishear is not evidence.
+# Genuinely earned their place here, appearing correctly in real speech: nav (35),
+# drift (13), debug frames (6), waypoint (5), edge inference (5), squash merge (2),
+# vacuum (2), hover lift (1). Those are the only ones the corpus actually supports.
+#
+# And note the evidence limit that started this audit: the original list was built
+# with tests/glossary-probe.sh, i.e. with `say`, which enunciates. `Claude` returns
+# correctly unaided under `say` and was wrong 10 times out of 10 in real audio. A
+# `say` probe can show a term IS biased for; it can never show one is unnecessary.
+# Untested (no corpus evidence either way): lidar, firmware, servo, EKF, covariance,
+# divergence, place contact, cam vision, park witness, dead reckoning, Electron,
+# iPad, webpack.
+#
+# Terms whose mishear is a real English phrase MUST live here rather than in
+# replacements.sed: "mypy" is heard as "might be", which is unfixable by rule.
+#
+# 2026-07-31: added Claude and ChatGPT in the two strongest (last) slots. Heard three
+# times in one session as "Cloud" — "talking to Cloud every day", "results from Cloud
+# or JGPD" — in a tool whose main target is Claude Code in a Terminal. Claude is
+# glossary-ONLY: "cloud" is real English that this project's own docs use ("no cloud
+# STT"), so an anchored rule would corrupt them; same reasoning that keeps a bare
+# claw→Claude rule out of replacements.sed. To pay for the two slots without growing
+# the live zone, AprilTag and ONNX were moved to the dead front of the list rather
+# than dropped — both are already covered deterministically by replacements.sed, so
+# they were spending a scarce probabilistic slot on a job sed already does.
+Glossary: AprilTag, ONNX, feeder, puller, 8BitDo, PCA9685, rosbridge, MJPEG, Jetson, OAK-D, e-stop, submap, keyframe, homography, worktree, CLAUDE.md, LVT, rosbag, ROS2, odom_raw, Pinpoint, RoboClaw, Teensy, ZUPT, ruff, xfail, mypy, pytest, pixi, wattson00, Wattson, tyler00, tyler01, ChatGPT, Claude.
