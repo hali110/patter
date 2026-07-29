@@ -27,7 +27,8 @@ Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
 |---|---|---|---|
 | Capture onset loss | ≤150 ms | 63–150 ms | CoreAudio device start. Audio before this is gone. |
 | Capture tail loss | ≤25 ms | ~21 ms | One 1024-frame tap buffer, in flight at key release. |
-| Release → transcript | ≤450 ms | 378 ms @ 4.2s audio | Dominated by one fixed 30s encoder window. |
+| Release → paste | ≤600 ms | 393–561 ms in real use | Dominated by one fixed 30s encoder window. 22s of speech costs 561 ms. |
+| Paste | ≤10 ms | 0–7 ms | Pasteboard write + synthetic ⌘V. |
 | `sh` + `curl` overhead | ~25 ms | 25 ms | Price of invariant 3. Deliberate. Do not "optimize" it. |
 | Cold model load | ~10 s | — | Once, at `dictate start`. Never on the hot path. |
 
@@ -48,13 +49,25 @@ Facts that constrain the design, established by measurement:
   callback misses its deadline and the tap goes silently deaf — this cost a full
   debugging session. The callback dispatches to main and does nothing else, and
   `.tapDisabledByTimeout` / `.tapDisabledByUserInput` are subscribed and re-enable it.
-- **Whisper hallucinates fluent text from silence.** A silent take once produced
-  "Get there, Kevin got even faster!". Since this app types into whatever document
-  is focused, a take that cannot plausibly contain speech (<0.35s, or peak below
-  0.01 full scale) is dropped before it reaches whisper. The peak floor exists to
-  catch a muted mic, not to do voice activity detection — room tone with a TV on
-  measures 0.02–0.04, so it must stay well under that. Every take logs its peak;
-  tune the threshold from the log, never from a guess.
+- **Whisper hallucinates fluent text from silence, and the jargon prompt is what
+  makes it dangerous.** Same silent file: with no prompt, `avg_logprob` is -0.565
+  and the text is " ." (appropriately unsure); with the glossary prompt it is
+  **-0.004** — near-total confidence in a transcript of nothing. One silent take
+  produced "Get there, Kevin got even faster!". Conditioning the decoder on a
+  glossary gives it fluent context to continue from, so it stops hedging on empty
+  input. Since this app types into whatever document is focused, that is the worst
+  failure it has.
+- **The gate must run before whisper, on amplitude.** Both model-side signals were
+  measured and are unusable: `no_speech_prob` returns 3.6e-10 (i.e. "definitely
+  speech") on pure silence, and `avg_logprob` scores silence *more* confident than
+  speech. Do not revisit them. A take under 0.35s, or peaking below 0.01 full
+  scale, is dropped without ever being transcribed.
+- **The peak floor catches a dead mic; it is not voice activity detection.** Real
+  speech measures 0.022–0.056 peak, room tone with a TV on measures 0.016–0.035 —
+  overlapping ranges, so amplitude cannot separate speech from noise, only signal
+  from no-signal. Margin over the floor is ~2.2x at 50% system input volume;
+  raising input volume widens it (speech at 0.03 peak uses ~10 of 16 bits). Every
+  take logs its peak — tune from the log, never from a guess.
 
 ## Rules
 
