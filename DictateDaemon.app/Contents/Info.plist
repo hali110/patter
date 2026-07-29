@@ -6,10 +6,14 @@
          TCC responsible process — a terminal-spawned child is attributed to the
          terminal and the Accessibility grant on the daemon is ignored, and a
          launchd job can't exec from ~/Documents (EX_CONFIG). -->
+    <!-- Distinct from main's com.haider.dictate on purpose. Two bundles sharing an
+         identifier make `open -g` a coin flip over which one LaunchServices starts,
+         and they appear as two identical rows in the Accessibility and Input
+         Monitoring lists with no way to tell which is which. -->
     <key>CFBundleIdentifier</key>
-    <string>com.haider.dictate</string>
+    <string>com.haider.dictate.ai</string>
     <key>CFBundleName</key>
-    <string>dictate</string>
+    <string>dictate (AI branch)</string>
     <key>CFBundleExecutable</key>
     <string>dictate-daemon</string>
     <key>CFBundlePackageType</key>
@@ -17,6 +21,6 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>dictate records while you hold right Option and transcribes locally.</string>
+    <string>dictate records while you hold right Option or right Command and transcribes locally.</string>
 </dict>
 </plist>
