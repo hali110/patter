@@ -38,3 +38,20 @@ s/[[:<:]][Ww]hisper[ -]?[Cc][Pp][Pp][[:>:]]/whisper.cpp/g
 # bare claw→Claude rule: "claw" is a real word and RoboClaw is in the glossary.
 s/[[:<:]][Cc]law ?[Cc]ode[[:>:]]/Claude Code/g
 s/[[:<:]][Uu]ser[ -][Cc]law[[:>:]]/user CLAUDE/g
+# "git" is heard as "get", and whisper punctuates the pause after it as a comma
+# ("Get pull." / "Git, pull." — two consecutive takes in daemon.log, neither
+# usable). Only subcommands whose "get X" form is NOT a real English phrase are
+# listed: "get status", "get log", "get diff" and "get branch" are all things a
+# person says and are deliberately absent — the same reasoning that keeps a bare
+# claw→Claude rule out of this file.
+s/[[:<:]]([Gg]et|[Gg]it),? (pull|push|commit|checkout|clone|fetch|merge|rebase|stash)[[:>:]]/git \2/g
+# "pull" also comes back as "poll", caught by the `say` probe rather than the log.
+# Anchored to the git prefix on purpose: a bare poll→pull rule would break
+# "poll the sensor", which is the normal meaning of the word in this codebase.
+s/[[:<:]]([Gg]et|[Gg]it),? poll[[:>:]]/git pull/g
+# Whisper splits the compound into two words. The glossary alone did not hold it:
+# AprilTag sits in jargon.txt and "April tag" still reached the log, because bias
+# is probabilistic and sed is not. Justified here rather than in the glossary
+# because "April tag" is two real words that do not form a real phrase — unlike
+# mypy→"might be", which is a phrase and therefore glossary-only.
+s/[[:<:]][Aa]pril ?[Tt]ag(s?)[[:>:]]/AprilTag\1/g

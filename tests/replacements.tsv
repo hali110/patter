@@ -46,5 +46,26 @@ Repaint the pinpointer	Repaint the pinpointer
 The bear raised its claw	The bear raised its claw
 The user clawed at the door	The user clawed at the door
 The robo claw driver stalled	The RoboClaw driver stalled
+# git subcommands, from two consecutive failed takes in daemon.log.
+Get pull.	git pull.
+Git, pull.	git pull.
+Get push and then get commit	git push and then git commit
+Git, checkout the branch	git checkout the branch
+Get poll from origin	git pull from origin
+Git, poll.	git pull.
+# Negative case: "poll" is the normal word for a sensor read and must survive.
+Poll the sensor every cycle	Poll the sensor every cycle
+We poll the encoder at 50 hertz	We poll the encoder at 50 hertz
+# Negative cases: these "get X" forms are real English and must NOT be rewritten.
+Get status on the run	Get status on the run
+Get log output from the daemon	Get log output from the daemon
+Get diff of the two files	Get diff of the two files
+Get branch coverage up	Get branch coverage up
+# AprilTag — whisper splits the compound; the glossary alone did not hold it.
+The April tag is in frame	The AprilTag is in frame
+Leave the april tag at origin	Leave the AprilTag at origin
+Both april tags are visible	Both AprilTags are visible
+# Negative case: the month is a real word and must survive.
+Ship it in April and tag the release	Ship it in April and tag the release
 # Whitespace normalisation.
   padded   text  	padded text
