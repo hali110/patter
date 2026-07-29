@@ -14,7 +14,10 @@ fi
 
 if [ "$1" = "start" ] || [ "$1" = "daemon" ]; then
   pgrep -f "dictate-daemon" >/dev/null && { echo "already running (mic icon in menu bar)"; exit 0; }
-  nohup "$DIR/bin/dictate-daemon" >> "$DIR/daemon.log" 2>&1 &
+  # Via LaunchServices, not as a shell child: `open` makes the daemon its own TCC
+  # responsible process, so the Accessibility grant on the app applies (a
+  # terminal-spawned child gets attributed to the terminal instead).
+  open -g "$DIR/DictateDaemon.app"
   sleep 1
   if pgrep -f "dictate-daemon" >/dev/null; then
     echo "mic icon in menu bar — hold right ⌥ anywhere to dictate (log: $DIR/daemon.log)"

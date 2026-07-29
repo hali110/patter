@@ -6,6 +6,9 @@ import ApplicationServices
 let toolDir = FileManager.default.homeDirectoryForCurrentUser.path + "/Documents/claude/tools/dictate"
 let wavPath = NSTemporaryDirectory() + "dictate-rec.wav"
 
+// Launched via `open` (LaunchServices), stdout goes nowhere — log to a file ourselves.
+freopen(toolDir + "/daemon.log", "a", stdout)
+
 func log(_ s: String) {
     let ts = ISO8601DateFormatter().string(from: Date())
     print("\(ts) \(s)")
@@ -50,7 +53,7 @@ final class Dictator: NSObject {
         if AXIsProcessTrusted() {
             log("accessibility: trusted — paste will work")
         } else {
-            log("accessibility: NOT trusted — transcripts will stay on the clipboard; add bin/dictate-daemon in System Settings → Privacy & Security → Accessibility (re-toggle after every rebuild), then: dictate stop && dictate start")
+            log("accessibility: NOT trusted — transcripts will stay on the clipboard; add DictateDaemon.app in System Settings → Privacy & Security → Accessibility (re-toggle after every rebuild), then: dictate stop && dictate start")
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         }
         ensureServer()
@@ -72,7 +75,7 @@ final class Dictator: NSObject {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque())
         else {
-            log("event tap creation failed — add bin/dictate-daemon in System Settings → Privacy & Security → Accessibility, then rerun: dictate start")
+            log("event tap creation failed — add DictateDaemon.app in System Settings → Privacy & Security → Accessibility, then rerun: dictate start")
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
             exit(1)
         }

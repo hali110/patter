@@ -12,9 +12,10 @@ menu-bar hold-to-talk daemon. No cloud, no telemetry.
 ## Setup (once)
 
 1. `brew install whisper-cpp ffmpeg` and download `models/ggml-large-v3-turbo.bin` from ggerganov/whisper.cpp on Hugging Face.
-2. Build: `cd daemon && swiftc -O main.swift -o ../bin/dictate-daemon && codesign -s - -f ../bin/dictate-daemon`
-3. System Settings → Privacy & Security → Accessibility → "+" → add `bin/dictate-daemon` (needed for the paste keystroke). Re-toggle after every rebuild — the grant tracks the binary.
-4. Symlink onto PATH: `ln -s "$PWD/dictate" /opt/homebrew/bin/dictate`
+2. Build: `cd daemon && swiftc -O main.swift -o ../DictateDaemon.app/Contents/MacOS/dictate-daemon && codesign -s - -f ../DictateDaemon.app`
+3. System Settings → Privacy & Security → Accessibility → "+" → add `DictateDaemon.app` (needed for the paste keystroke). Re-toggle after every rebuild — the grant tracks the app. The daemon must be launched via `dictate start` (`open -g`, i.e. LaunchServices) — run directly from a terminal it inherits the terminal's TCC identity and the grant is ignored; a launchd job can't exec from ~/Documents at all (EX_CONFIG).
+4. First recording prompts once for Microphone (for "dictate") — allow.
+5. Symlink onto PATH: `ln -s "$PWD/dictate" /opt/homebrew/bin/dictate`
 
 ## Tuning
 

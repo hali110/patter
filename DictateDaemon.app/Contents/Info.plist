@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App bundle so LaunchServices (`open -g`) spawns the daemon as its own
+         TCC responsible process — a terminal-spawned child is attributed to the
+         terminal and the Accessibility grant on the daemon is ignored, and a
+         launchd job can't exec from ~/Documents (EX_CONFIG). -->
+    <key>CFBundleIdentifier</key>
+    <string>com.haider.dictate</string>
+    <key>CFBundleName</key>
+    <string>dictate</string>
+    <key>CFBundleExecutable</key>
+    <string>dictate-daemon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>dictate records while you hold right Option and transcribes locally.</string>
+</dict>
+</plist>
