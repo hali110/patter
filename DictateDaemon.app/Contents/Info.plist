@@ -2,25 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App bundle so LaunchServices (`open -g`) spawns the daemon as its own
-         TCC responsible process — a terminal-spawned child is attributed to the
-         terminal and the Accessibility grant on the daemon is ignored, and a
-         launchd job can't exec from ~/Documents (EX_CONFIG). -->
-    <!-- If you ever run a second checkout's bundle at the same time, give it a
-         different identifier: two bundles sharing one makes `open -g` a coin flip
-         over which LaunchServices starts, and they show up as two identical rows
-         in the Accessibility and Input Monitoring lists. -->
-    <key>CFBundleIdentifier</key>
-    <string>com.haider.dictate</string>
-    <key>CFBundleName</key>
-    <string>dictate</string>
-    <key>CFBundleExecutable</key>
-    <string>dictate-daemon</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>dictate records while you hold right Option or right Command and transcribes locally.</string>
+	<key>CFBundleDisplayName</key>
+	<string>DictateDaemon</string>
+	<key>CFBundleExecutable</key>
+	<string>dictate-daemon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.haider.dictate</string>
+	<key>CFBundleName</key>
+	<string>DictateDaemon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>dictate records while you hold right Option or right Command and transcribes locally.</string>
 </dict>
 </plist>

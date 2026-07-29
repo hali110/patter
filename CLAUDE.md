@@ -186,6 +186,26 @@ Hard-won; re-deriving these costs hours.
 - **A bundled app needs `NSMicrophoneUsageDescription`** or the mic is silently
   denied instead of prompted.
 - **stdout goes nowhere under LaunchServices.** The daemon `freopen`s its own log.
+- **Deleting a worktree does not unregister its `.app`, and a stale registration
+  makes the Accessibility grant unfixable.** Symptom: you select the app in the
+  picker, it looks accepted, and no row ever appears — repeatedly, through resets
+  and rebuilds. Cause: `lsregister -dump` listed *two* bundles claiming
+  `com.haider.dictate`, one of them a deleted worktree path, so System Settings
+  bound the grant to a bundle that no longer exists. Diagnose with
+  `lsregister -dump | grep 'path:.*DictateDaemon'` — more than one line is the bug.
+  Fix with `lsregister -u <dead path>`, then `-f <real path>`, then `tccutil reset`.
+  `lsregister` lives in
+  `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/`.
+  Give a second checkout's bundle its own `CFBundleIdentifier` if it will ever run.
+- **The Privacy list shows `CFBundleName`, not the filename.** It read `dictate`
+  while the file was `DictateDaemon.app`, so the row was there and looked absent.
+  Both are now `DictateDaemon`; keep them identical.
+- **Ad-hoc signing (`codesign -s -`) is why grants die on every rebuild.** TCC keys
+  an app on its designated requirement; with no signing identity it falls back to
+  the `cdhash`, which changes whenever the binary does, so macOS treats each build
+  as a new app and orphans the old row. A self-signed code-signing certificate
+  would make grants survive rebuilds — not done yet, and the reason the re-toggle
+  dance exists.
 
 ## Testing
 

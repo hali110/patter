@@ -71,7 +71,10 @@ final class Dictator: NSObject {
         if AXIsProcessTrusted() {
             log("accessibility: trusted — paste will work")
         } else {
-            log("accessibility: NOT trusted — transcripts will stay on the clipboard; add DictateDaemon.app in System Settings → Privacy & Security → Accessibility (re-toggle after every rebuild), then: dictate stop && dictate start")
+            // The full path, because the grant is made in a file picker and the app
+            // lives several folders deep. "DictateDaemon.app" alone sent a past
+            // session hunting for a `bin/` binary that has not existed since 7ce26f0.
+            log("accessibility: NOT trusted — transcripts will stay on the clipboard; in System Settings → Privacy & Security → Accessibility add (⌘⇧G to paste the path): \(Bundle.main.bundleURL.path) — it appears in the list as \"DictateDaemon\". Re-toggle after every rebuild, then: dictate stop && dictate start")
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         }
 
@@ -148,7 +151,7 @@ final class Dictator: NSObject {
         switch listen {
         case kIOHIDAccessTypeGranted: log("input monitoring: granted")
         case kIOHIDAccessTypeDenied:
-            log("input monitoring: DENIED — enable DictateDaemon.app in System Settings → Privacy & Security → Input Monitoring")
+            log("input monitoring: DENIED — in System Settings → Privacy & Security → Input Monitoring add (⌘⇧G): \(Bundle.main.bundleURL.path) — listed as \"DictateDaemon\". This is a separate grant from Accessibility; the hotkey is deaf without it.")
         default:
             log("input monitoring: not yet determined — prompting")
             IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
