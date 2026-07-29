@@ -50,7 +50,7 @@ final class Dictator: NSObject {
         if AXIsProcessTrusted() {
             log("accessibility: trusted — paste will work")
         } else {
-            log("accessibility: NOT trusted — transcripts will stay on the clipboard; grant in the dialog (or System Settings → Privacy & Security → Accessibility → your terminal), then: dictate stop && dictate start")
+            log("accessibility: NOT trusted — transcripts will stay on the clipboard; add bin/dictate-daemon in System Settings → Privacy & Security → Accessibility (re-toggle after every rebuild), then: dictate stop && dictate start")
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         }
         ensureServer()
@@ -72,7 +72,7 @@ final class Dictator: NSObject {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque())
         else {
-            print("NEEDS ACCESSIBILITY: System Settings → Privacy & Security → Accessibility → enable your terminal app, then rerun: dictate daemon")
+            log("event tap creation failed — add bin/dictate-daemon in System Settings → Privacy & Security → Accessibility, then rerun: dictate start")
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
             exit(1)
         }
