@@ -118,7 +118,7 @@ final class Dictator: NSObject {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             log("transcript: \(txt.isEmpty ? "(empty)" : txt)")
             DispatchQueue.main.async {
-                if !txt.isEmpty { self.paste(txt) }
+                if !txt.isEmpty { self.paste(txt + " ") }  // trailing space so back-to-back utterances don't fuse
                 self.icon("mic")
                 self.busy = false
             }
