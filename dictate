@@ -2,22 +2,46 @@
 # dictate — local hold-to-talk dictation for macOS. See CLAUDE.md for the rules.
 #
 #   dictate start | stop | build | doctor | test | bench | log
+#   dictate refine [text] restructure text through the local LLM (stdin if no arg)
+#   dictate pull-model    download the ~4.7GB refine model
 #   dictate               terminal fallback loop (Enter records, Enter stops)
 SRC="$0"; [ -L "$SRC" ] && SRC="$(readlink "$SRC")"
 DIR="$(cd "$(dirname "$SRC")" && pwd)"
 MODEL="$DIR/models/ggml-large-v3-turbo.bin"
+REFINE_MODEL="$DIR/models/refine-q4.gguf"
+REFINE_URL="https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 APP="$DIR/DictateDaemon.app"
 LOG="$DIR/daemon.log"
 PORT=8090
+REFINE_PORT=8091
 TAB="$(printf '\t')"
 
 server_up() { curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/"; }
+refine_up() { curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$REFINE_PORT/health"; }
 
 case "$1" in
 
 stop)
   pkill -f "dictate-daemon" 2>/dev/null && echo "daemon stopped" || echo "daemon not running"
   pkill -f "whisper-server -m" 2>/dev/null && echo "whisper-server stopped (~2GB freed)" || echo "server not running"
+  pkill -f "llama-server -m" 2>/dev/null && echo "llama-server stopped (~5GB freed)" || echo "refine server not running"
+  ;;
+
+pull-model)
+  # One command, not a README curl incantation. Resumable: a 4.7GB download over a
+  # bad connection should not have to start again.
+  [ -f "$REFINE_MODEL" ] && { echo "already have $(du -h "$REFINE_MODEL" | cut -f1) at models/refine-q4.gguf"; exit 0; }
+  mkdir -p "$DIR/models"
+  echo "downloading Qwen2.5-7B-Instruct Q4_K_M (~4.7GB) — resumable, ctrl-C is safe"
+  curl -L --retry 3 -C - -o "$REFINE_MODEL.part" "$REFINE_URL" || { echo "download failed"; exit 1; }
+  mv "$REFINE_MODEL.part" "$REFINE_MODEL"
+  echo "done — restart to load it: dictate stop && dictate start"
+  ;;
+
+refine)
+  refine_up || { echo "llama-server not running — dictate start (or: dictate pull-model)" >&2; exit 1; }
+  if [ -n "$2" ]; then printf '%s' "$2"; else cat; fi | sh "$DIR/refine.sh"
+  echo
   ;;
 
 start|daemon)
@@ -36,7 +60,7 @@ start|daemon)
     sleep 0.2; i=$((i+1))
   done
   if pgrep -f "dictate-daemon" >/dev/null; then
-    echo "mic icon in menu bar — hold right ⌥ anywhere to dictate"
+    echo "mic icon in menu bar — hold right ⌥ to dictate, right ⌘ to dictate + restructure"
     tail -n "+$((before+1))" "$LOG" | grep -E "accessibility:|input monitoring:|microphone:|capture:" \
       | sed -E 's/^[^ ]+ /  /; s/(.{100}).*/\1…/'
   else
@@ -49,10 +73,20 @@ build)
   swiftc -O "$DIR"/daemon/*.swift -o "$APP/Contents/MacOS/dictate-daemon" || exit 1
   codesign -s - -f "$APP" >/dev/null 2>&1 || { echo "codesign failed"; exit 1; }
   echo "built + signed: $(du -h "$APP/Contents/MacOS/dictate-daemon" | cut -f1) binary"
-  if pgrep -f "dictate-daemon" >/dev/null; then
-    pkill -f "dictate-daemon"; sleep 1; open -g "$APP"; sleep 1
-    echo "daemon restarted"
-  fi
+  # Restart only a daemon running from THIS checkout. Building in a worktree used to
+  # pkill the daemon the other checkout was running and put this build in its place —
+  # silently swapping the binary behind a working production setup.
+  running=$(pgrep -f "dictate-daemon" | head -1)
+  running_app=$(ps -o command= -p "${running:-0}" 2>/dev/null)
+  case "$running_app" in
+    "$APP"*)
+      pkill -f "$APP/Contents/MacOS/dictate-daemon"; sleep 1; open -g "$APP"; sleep 1
+      echo "daemon restarted" ;;
+    "") ;;
+    *)  echo "note: a daemon from another checkout is running and was left alone:"
+        echo "      ${running_app%%/Contents*}"
+        echo "      to run THIS build instead: dictate stop && dictate start" ;;
+  esac
   # The grants track the code signature, which changes on every rebuild.
   echo "⚠  re-toggle DictateDaemon.app in System Settings → Privacy & Security →"
   echo "   Accessibility AND Input Monitoring (both are required, and both reset on rebuild)"
@@ -65,12 +99,17 @@ doctor)
   for b in whisper-server whisper-cli ffmpeg swiftc; do
     command -v "$b" >/dev/null; chk $? "$b$([ -z "$(command -v $b)" ] && echo ' — brew install whisper-cpp ffmpeg')"
   done
+  for b in llama-server jq; do
+    command -v "$b" >/dev/null; chk $? "$b$([ -z "$(command -v $b)" ] && echo ' — brew install llama.cpp') (right ⌘ refine path)"
+  done
   echo "assets"
   [ -f "$MODEL" ]; chk $? "model ($([ -f "$MODEL" ] && du -h "$MODEL" | cut -f1 || echo 'missing — see README'))"
+  [ -f "$REFINE_MODEL" ]; chk $? "refine model ($([ -f "$REFINE_MODEL" ] && du -h "$REFINE_MODEL" | cut -f1 || echo 'missing — dictate pull-model'))"
   [ -x "$APP/Contents/MacOS/dictate-daemon" ]; chk $? "daemon binary (dictate build)"
   echo "runtime"
   pgrep -f "dictate-daemon" >/dev/null; chk $? "daemon running (dictate start)"
   server_up; chk $? "whisper-server on :$PORT"
+  refine_up; chk $? "llama-server on :$REFINE_PORT (right ⌘ pastes raw without it)"
   # The daemon is the only process that can observe its own TCC grants; it logs them
   # at startup, so doctor reports what the black box last saw.
   # A running process cannot see a TCC toggle flipped after it launched, so these are
@@ -110,6 +149,37 @@ test)
   [ "$fail" = 0 ] || exit 1
   ;;
 
+refine-test)
+  refine_up || { echo "llama-server not running — dictate start (or: dictate pull-model)"; exit 1; }
+  pass=0; fail=0
+  # The passthrough floor is the safety property, so it is asserted first and by
+  # identity: below the floor the text must come back byte-for-byte, because an LLM
+  # given a near-empty utterance invents a whole request instead of declining.
+  for short in "um" "Testing, testing." "." "Holding option works."; do
+    got=$(printf '%s' "$short" | sh "$DIR/refine.sh" 2>/dev/null)
+    if [ "$got" = "$short" ]; then pass=$((pass+1)); else
+      fail=$((fail+1)); printf '  FAIL  short input was not passed through\n        in:   %s\n        got:  %s\n' "$short" "$got"
+    fi
+  done
+
+  while IFS="$TAB" read -r input want reject; do
+    case "$input" in \#*|"") continue ;; esac
+    got=$(printf '%s' "$input" | sh "$DIR/refine.sh" 2>/dev/null)
+    bad=""
+    OLDIFS=$IFS; IFS=';'
+    for w in $want;   do [ -n "$w" ] && case "$got" in *"$w"*) ;; *) bad="$bad
+        missing: $w" ;; esac; done
+    for r in $reject; do [ -n "$r" ] && case "$got" in *"$r"*) bad="$bad
+        should not contain: $r" ;; esac; done
+    IFS=$OLDIFS
+    if [ -z "$bad" ]; then pass=$((pass+1)); else
+      fail=$((fail+1)); printf '  FAIL  in:   %s\n        got:  %s%s\n' "$input" "$got" "$bad"
+    fi
+  done < "$DIR/tests/refine.tsv"
+  echo "$pass passed, $fail failed"
+  [ "$fail" = 0 ] || exit 1
+  ;;
+
 bench)
   command -v whisper-server >/dev/null || { echo "whisper-cpp not installed — run: dictate doctor"; exit 1; }
   TMP="${TMPDIR:-/tmp}/dictate-bench"; mkdir -p "$TMP"
@@ -131,6 +201,27 @@ bench)
     python3 -c "print(f'  {$dur:5.1f}s audio -> {($t1-$t0)*1000:5.0f} ms  ({$dur/($t1-$t0):4.1f}x realtime)')"
     [ "$n" = 1 ] && echo "        transcript: $out"
   done
+
+  if refine_up; then
+    echo "refine latency (right ⌘ path, resident 7B on Metal):"
+    # Distinct content per clause, not one clause repeated: a repeated clause condenses
+    # to three words however long the input is, and reports a latency nobody will see.
+    # Output length drives generation time, so the phrases have to carry real material.
+    S="okay so can you like check the tests first and then uh look at the glossary thing"
+    M="$S, and also I was thinking maybe we should restart the rosbag on tyler01 and see whether the pinpoint odometry still drifts after the ekf update lands"
+    L="$M, and then after that please write up what we found in the log file, oh and don't touch main obviously, and if the drift is still there just revert the whole thing and we will look at it tomorrow instead"
+    for v in S M L; do
+      eval "phrase=\$$v"
+      t0=$(python3 -c 'import time;print(time.time())')
+      out=$(printf '%s' "$phrase" | sh "$DIR/refine.sh" 2>/dev/null)
+      t1=$(python3 -c 'import time;print(time.time())')
+      python3 -c "
+i=len('''$phrase'''.split()); o=len('''$out'''.split())
+print(f'  {i:3d} words in -> {($t1-$t0)*1000:5.0f} ms  ({o:3d} words out)')"
+    done
+  else
+    echo "refine latency: skipped (llama-server not running)"
+  fi
 
   echo "capture onset loss (speech lost before the first sample lands):"
   ffmpeg -y -loglevel quiet -f avfoundation -i ":default" -ar 16000 -ac 1 "$TMP/c.wav" & P=$!
@@ -175,7 +266,7 @@ log)
   ;;
 
 *)
-  echo "usage: dictate [start|stop|build|doctor|test|bench|log]"
+  echo "usage: dictate [start|stop|build|doctor|test|bench|log|refine|pull-model]"
   exit 1
   ;;
 esac

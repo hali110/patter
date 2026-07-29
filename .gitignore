@@ -1,4 +1,8 @@
 models/
+# In a worktree this is a symlink to the main checkout's models/ so the 1.6GB
+# whisper model and the 4.4GB refine model are not duplicated per branch. A
+# symlink is a file to git, so `models/` alone does not cover it.
+models
 DictateDaemon.app/Contents/MacOS/
 DictateDaemon.app/Contents/_CodeSignature/
 daemon.log

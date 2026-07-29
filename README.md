@@ -4,6 +4,11 @@ Local jargon-aware dictation for macOS. Hold right ⌥ anywhere, speak, release 
 text lands at the cursor. whisper.cpp (large-v3-turbo, Metal), ~400ms per
 utterance. No cloud, no telemetry.
 
+On this branch (`ai-cleanup`), **right ⌘** does the same thing but runs the
+transcript through a local 7B (llama.cpp, Qwen2.5-7B-Instruct on Metal) that turns
+thinking-out-loud into a written request — ~700ms–1.8s end to end. Right ⌥ is
+unchanged and never touches the model. Both texts go to `daemon.log`.
+
 Project rules and the latency budget live in [CLAUDE.md](CLAUDE.md).
 
 ## Use
@@ -15,6 +20,9 @@ Project rules and the latency budget live in [CLAUDE.md](CLAUDE.md).
 | `dictate doctor` | check every dependency, process, and permission |
 | `dictate build` | rebuild + re-sign the daemon after a source change |
 | `dictate test` | run the jargon/replacement suite |
+| `dictate refine-test` | run the refine property suite (needs llama-server) |
+| `dictate refine "text"` | restructure text through the local LLM, no mic |
+| `dictate pull-model` | download the ~4.7GB refine model |
 | `dictate bench` | print the latency table |
 | `dictate log` | follow `daemon.log` |
 | `dictate` | terminal fallback: Enter records, Enter stops, transcript → stdout + clipboard |

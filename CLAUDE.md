@@ -18,6 +18,13 @@ Break one of these and it is no longer this project.
    settings UI. Features that do not reduce time-from-speech-to-correct-text are
    rejected on sight.
 
+> **Branch `ai-cleanup` deliberately strains invariant 4.** Restructuring speech
+> into a written request is arguably a second job, and it is on trial here rather
+> than on main for exactly that reason. It earns merge only if it makes
+> time-from-speech-to-*usable*-prompt shorter in real use. It does not get to
+> slow down, complicate, or add a failure mode to plain dictation — and if the
+> two ever conflict, plain dictation wins and this gets deleted.
+
 ## Latency budget
 
 Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
@@ -28,6 +35,7 @@ Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
 | Capture onset loss | ≤150 ms | 63–150 ms | CoreAudio device start. Audio before this is gone. |
 | Capture tail loss | ≤25 ms | ~21 ms | One 1024-frame tap buffer, in flight at key release. |
 | Release → paste | ≤600 ms | 393–561 ms in real use | Dominated by one fixed 30s encoder window. 22s of speech costs 561 ms. |
+| Refine (right ⌘ only) | ≤2000 ms | 321–1259 ms | Local 7B on Metal. Scales with **output** length, unlike whisper. Off the right-⌥ path entirely. |
 | Paste | ≤10 ms | 0–7 ms | Pasteboard write + synthetic ⌘V. |
 | `sh` + `curl` overhead | ~25 ms | 25 ms | Price of invariant 3. Deliberate. Do not "optimize" it. |
 | Cold model load | ~10 s | — | Once, at `dictate start`. Never on the hot path. |
@@ -81,6 +89,23 @@ Facts that constrain the design, established by measurement:
   speech") on pure silence, and `avg_logprob` scores silence *more* confident than
   speech. Do not revisit them. A take under 0.35s, or peaking below 0.01 full
   scale, is dropped without ever being transcribed.
+- **The refine LLM invents a whole request out of a near-empty one, so its gate
+  also runs before the model — on word count.** Exactly the failure whisper has
+  with silence, one stage later and with worse consequences: fed the single word
+  "um", the 7B returned *"Check the tests, actually no, first clone the repository,
+  then check the tests."* — a fabricated, plausible, entirely unspoken instruction,
+  which this app would then type into the focused document. Two things caused it.
+  The model had nothing to anchor on, and `refine.txt` at the time illustrated a
+  rule with a concrete example, which the model regurgitated as content — prompt
+  examples become output when the input is thin, so the prompt now describes rules
+  instead of showing them. **Instructing the model to return short input verbatim
+  does not work** — it disobeys precisely when the input is too thin, which is the
+  case that matters. Anything under 12 words skips the model entirely. Nothing is
+  lost by that: an utterance that short has no rambling to condense.
+- **Refine cost tracks output length, not input length.** 17 words in → 321 ms,
+  83 words in → 1259 ms, because generation is autoregressive. This is the opposite
+  of whisper's flat 30s-window cost, so the two stages must be budgeted separately —
+  a long dictation is cheap to transcribe and expensive to restructure.
 - **The peak floor catches a dead mic; it is not voice activity detection.** Real
   speech measures 0.022–0.056 peak, room tone with a TV on measures 0.016–0.035 —
   overlapping ranges, so amplitude cannot separate speech from noise, only signal
@@ -110,6 +135,37 @@ sed supports it and unanchored rules corrupt real words (`network tree` →
 **Operator actions are one command.** `dictate build`, `dictate doctor`,
 `dictate test`, `dictate bench`. Never a multi-step terminal runbook, never a
 manual `swiftc` incantation in the README.
+
+## The refine path (branch `ai-cleanup`)
+
+Right ⌘ does capture → `transcribe.sh` → `refine.sh` → paste. Right ⌥ is
+untouched and never reaches the model.
+
+- **llama.cpp, not Ollama.** `llama-server` is the same project family as
+  `whisper-server`, is already a Homebrew formula, and speaks the same resident
+  request/response shape — so invariant 2 costs nothing. Ollama would be a second
+  runtime and model store to own for no capability gain.
+- **Model** is `models/refine-q4.gguf` (Qwen2.5-7B-Instruct Q4_K_M, 4.4GB), resident
+  on `127.0.0.1:8091` with `-ngl 99`. `dictate pull-model` fetches it. Absent, the
+  daemon runs normally and right ⌘ pastes raw — never a hard failure.
+- **`refine.sh` never fails closed.** Every error path prints its input unchanged
+  and explains on stderr. A refine that silently ate a sentence would be strictly
+  worse than not having the feature.
+- **jq is `/usr/bin/jq`, shipped by macOS** — not a new dependency. It is there
+  because hand-escaping JSON around arbitrary dictated text is how a transcript
+  containing a quote mark silently truncates the request.
+- **The prompt is data** (`refine.txt`), like `jargon.txt`. It states rules and
+  deliberately shows no examples — see the hallucination note in the measured
+  facts above.
+- **Output is re-run through `clean.sh`.** The model is told to keep technical
+  nouns verbatim and mostly does, but invariant 3 says a jargon fix holds on every
+  path. Costs ~10ms of a ~1000ms stage.
+- **A keystroke during a hold cancels the take.** Right ⌘ is half of every shortcut
+  on macOS, so "held ⌘, then pressed S" must not paste a fragment into the document
+  that just saved. The tap subscribes to `keyDown` solely to notice one arrived; it
+  is listenOnly and the key is never read or logged.
+- **Both texts are always logged** when refine changes anything. The model can drop
+  a requirement and the spoken original is otherwise gone for good.
 
 ## macOS platform notes
 
@@ -144,8 +200,12 @@ came from it; update them here when they move.
   400ms actually feels slow.
 - **Always-hot mic** to erase the 100ms onset loss. Costs a permanently lit
   recording indicator. Privacy beats 100ms.
-- **A local LLM cleanup pass** between whisper and paste. Adds seconds to a
-  400ms pipeline to fix errors that `replacements.sed` fixes for free.
+- **A local LLM cleanup pass on the right-⌥ path.** Still rejected, and the
+  original reason stands: it adds seconds to a 400ms pipeline to fix errors that
+  `replacements.sed` fixes for free. What this branch adds is a *different job* on
+  a *different key* — right ⌘ restructures thinking-out-loud into a written
+  request, which is not spelling cleanup and cannot be done with rules. Right ⌥
+  must never touch the model. See "The refine path" below.
 - **Smaller/faster models.** `large-v3-turbo` at 14x realtime is already
   overhead-bound, not compute-bound. A smaller model saves little and loses
   jargon accuracy.

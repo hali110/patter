@@ -16,6 +16,9 @@ let rootDir: String = {
 
 let logPath = rootDir + "/daemon.log"
 let modelPath = rootDir + "/models/ggml-large-v3-turbo.bin"
+// Only loaded for the right-⌘ refine path. Absent is a supported state: the daemon
+// runs normally and refine falls back to pasting the raw transcript.
+let refineModelPath = rootDir + "/models/refine-q4.gguf"
 
 private let logFormatter: ISO8601DateFormatter = {
     let f = ISO8601DateFormatter()
@@ -39,6 +42,13 @@ func redirectLogToFile() {
         try? FileManager.default.moveItem(atPath: logPath, toPath: logPath + ".1")
     }
     freopen(logPath, "a", stdout)
+}
+
+/// Quotes a string as one shell argument. Dictated text is arbitrary text: an
+/// apostrophe in "don't" would otherwise close the quoting and the rest of the
+/// sentence would be run as a command.
+func esc(_ s: String) -> String {
+    "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
 @discardableResult

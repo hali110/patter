@@ -1,4 +1,11 @@
-// dictate-daemon — hold RIGHT OPTION anywhere: record → local whisper → paste at cursor.
+// dictate-daemon — hold a key anywhere, speak, release, text lands at the cursor.
+//
+//   right ⌥  record → whisper → paste verbatim          (~400ms)
+//   right ⌘  record → whisper → local LLM → paste       (~1.5–3s, restructured)
+//
+// The two are separate keys rather than one key plus a setting so that the fast
+// path stays provably untouched: dictating a commit message or a command must
+// never go near a model that rewrites words.
 // Menu bar: mic idle, mic.fill recording, ellipsis transcribing. No cloud, no telemetry.
 // Paths, logging and subprocesses live in Core.swift; capture in Recorder.swift.
 import Cocoa
@@ -10,6 +17,19 @@ redirectLogToFile()
 
 // MARK: - Daemon
 
+/// Which hotkey started the take, and therefore what happens to the text.
+enum Mode {
+    case raw      // right ⌥ — whisper only
+    case refine   // right ⌘ — whisper, then the local LLM
+
+    /// The device-specific modifier bit, not the generic mask: with the left key of
+    /// the same pair also held, the generic mask stays set on release and the take
+    /// would never stop.
+    var keycode: Int64 { self == .raw ? 61 : 54 }
+    var flagBit: UInt64 { self == .raw ? 0x40 : 0x10 }  // NX_DEVICERALTKEYMASK / NX_DEVICERCMDKEYMASK
+    var label: String { self == .raw ? "raw" : "refine" }
+}
+
 final class Dictator: NSObject {
     private var statusItem: NSStatusItem!
     private var eventTap: CFMachPort?
@@ -17,7 +37,10 @@ final class Dictator: NSObject {
     // Serial: utterances transcribe and paste in the order they were spoken, and a
     // new recording can start while the previous one is still transcribing.
     private let work = DispatchQueue(label: "dictate.transcribe")
-    private var recording = false
+    // Separate from `work`: model loading blocks for up to 60s per server, and an
+    // utterance spoken during startup must not queue behind it.
+    private let boot = DispatchQueue(label: "dictate.boot")
+    private var recordingMode: Mode?
     private var inFlight = 0
     private var seq = 0
     private var startedAt = Date()
@@ -29,9 +52,11 @@ final class Dictator: NSObject {
         icon("mic")
 
         let menu = NSMenu()
-        let info = NSMenuItem(title: "hold right ⌥ to dictate", action: nil, keyEquivalent: "")
-        info.isEnabled = false
-        menu.addItem(info)
+        for line in ["hold right ⌥ — dictate verbatim", "hold right ⌘ — dictate, AI-restructured"] {
+            let info = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            info.isEnabled = false
+            menu.addItem(info)
+        }
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Reveal Log", action: #selector(revealLog), keyEquivalent: "l"))
         menu.addItem(NSMenuItem(title: "Quit dictate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -79,20 +104,37 @@ final class Dictator: NSObject {
 
     private func ensureServer() {
         guard FileManager.default.fileExists(atPath: modelPath) else { return }
+        spawnServer(name: "whisper", port: 8090, probe: "/",
+                    cmd: "/opt/homebrew/bin/whisper-server -m '\(modelPath)' --port 8090 --host 127.0.0.1",
+                    onFail: "transcription will fall back to whisper-cli (~10s/utterance)")
+
+        // Absent model is not an error: the daemon is fully usable on right ⌥ alone,
+        // and right ⌘ degrades to pasting the raw transcript rather than breaking.
+        guard FileManager.default.fileExists(atPath: refineModelPath) else {
+            log("refine: model missing at \(refineModelPath) — right ⌘ will paste raw transcripts; run: dictate doctor")
+            return
+        }
+        // -ngl 99 puts every layer on Metal; without it llama.cpp runs on CPU and the
+        // refine stage goes from ~1.5s to tens of seconds.
+        spawnServer(name: "refine", port: 8091, probe: "/health",
+                    cmd: "/opt/homebrew/bin/llama-server -m '\(refineModelPath)' --port 8091 --host 127.0.0.1 "
+                       + "-ngl 99 -c 4096 -fa on --no-webui",
+                    onFail: "right ⌘ will paste raw transcripts")
+    }
+
+    /// Model load is ~5–10s, so it happens once at startup and never on the hot path.
+    private func spawnServer(name: String, port: Int, probe: String, cmd: String, onFail: String) {
         let t0 = Date()
-        work.async {
-            let up = shell("curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:8090/ && echo up").contains("up")
-            if up { log("server: already resident (\(ms(t0))ms)"); return }
-            log("server: loading model, first utterance may be slow")
-            shell("nohup /opt/homebrew/bin/whisper-server -m '\(modelPath)' --port 8090 --host 127.0.0.1 >/dev/null 2>&1 &")
-            for _ in 0..<120 {
-                if shell("curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:8090/ && echo up").contains("up") {
-                    log("server: resident (\(ms(t0))ms)")
-                    return
-                }
+        let up = "curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:\(port)\(probe) && echo up"
+        boot.async {
+            if shell(up).contains("up") { log("\(name): already resident (\(ms(t0))ms)"); return }
+            log("\(name): loading model, first use may be slow")
+            shell("nohup \(cmd) >/dev/null 2>&1 &")
+            for _ in 0..<240 {
+                if shell(up).contains("up") { log("\(name): resident (\(ms(t0))ms)"); return }
                 Thread.sleep(forTimeInterval: 0.25)
             }
-            log("server: FAILED to come up in 30s — transcription will fall back to whisper-cli (~10s/utterance)")
+            log("\(name): FAILED to come up in 60s — \(onFail)")
         }
     }
 
@@ -111,7 +153,12 @@ final class Dictator: NSObject {
 
         // flagsChanged carries the hotkey; the two tapDisabled types are how the OS
         // tells us it has muted us. Subscribing to them is what makes recovery possible.
+        // keyDown is subscribed only to cancel a take (see handle): right ⌘ is half of
+        // every shortcut on the system, so "held ⌘, then pressed S" must not paste a
+        // fragment into the document that just saved. Nothing about the key is read
+        // beyond the fact that one arrived, and the tap is listenOnly.
         let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+            | CGEventMask(1 << CGEventType.keyDown.rawValue)
             | CGEventMask(1 << CGEventType.tapDisabledByTimeout.rawValue)
             | CGEventMask(1 << CGEventType.tapDisabledByUserInput.rawValue)
         guard let tap = CGEvent.tapCreate(
@@ -143,29 +190,47 @@ final class Dictator: NSObject {
             if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             return
         }
-        guard event.getIntegerValueField(.keyboardEventKeycode) == 61 else { return }  // right option
-        // Test the device-specific right-option bit, not .maskAlternate: with left ⌥
-        // also held, maskAlternate stays set on right-⌥ release and we would never stop.
-        let down = event.flags.rawValue & 0x40 != 0  // NX_DEVICERALTKEYMASK
-        DispatchQueue.main.async { down ? self.startRec() : self.stopRec() }
+        // A real keystroke during a take means the hold was the start of a shortcut,
+        // not dictation. Discard rather than paste a fragment into the focused app.
+        if type == .keyDown {
+            DispatchQueue.main.async { self.cancelRec() }
+            return
+        }
+
+        let code = event.getIntegerValueField(.keyboardEventKeycode)
+        guard let mode: Mode = (code == Mode.raw.keycode) ? .raw
+                             : (code == Mode.refine.keycode) ? .refine : nil else { return }
+        let down = event.flags.rawValue & mode.flagBit != 0
+        DispatchQueue.main.async { down ? self.startRec(mode) : self.stopRec(mode) }
     }
 
-    private func startRec() {
-        guard !recording else { return }
+    private func startRec(_ mode: Mode) {
+        guard recordingMode == nil else { return }  // the other hotkey already owns this take
         seq += 1
         wavURL = URL(fileURLWithPath: NSTemporaryDirectory() + "dictate-\(seq).wav")
         do {
             let startMs = try recorder.start(to: wavURL)
-            recording = true
+            recordingMode = mode
             startedAt = Date()
-            icon("mic.fill")
+            icon(mode == .raw ? "mic.fill" : "wand.and.rays")
             // Frontmost app is the first thing you want when "it works here but not there".
             let target = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
-            log("[\(seq)] rec start (hw \(startMs)ms) target=\(target)")
+            log("[\(seq)] rec start \(mode.label) (hw \(startMs)ms) target=\(target)")
         } catch {
             log("[\(seq)] rec start FAILED — \(error.localizedDescription)")
             icon("exclamationmark.triangle")
         }
+    }
+
+    /// A key was pressed mid-take, so the modifier hold was a shortcut. Throw the
+    /// audio away without transcribing it — nothing should reach the focused app.
+    private func cancelRec() {
+        guard recordingMode != nil else { return }
+        recordingMode = nil
+        let take = recorder.stop()
+        try? FileManager.default.removeItem(at: wavURL)
+        log("[\(seq)] cancelled (key pressed during hold): \(String(format: "%.2f", take.seconds))s")
+        if inFlight == 0 { icon("mic") }
     }
 
     /// An accidental brush of the key must never inject text. Whisper is a language
@@ -179,9 +244,11 @@ final class Dictator: NSObject {
     private static let minSeconds = 0.35
     private static let minPeak: Float = 0.01
 
-    private func stopRec() {
-        guard recording else { return }
-        recording = false
+    private func stopRec(_ mode: Mode) {
+        // Only the key that started this take may end it, so releasing the other
+        // modifier mid-utterance cannot stop a recording it did not begin.
+        guard recordingMode == mode else { return }
+        recordingMode = nil
         let n = seq, url = wavURL, released = Date()
         let take = recorder.stop()
         let seconds = take.seconds
@@ -199,10 +266,22 @@ final class Dictator: NSObject {
 
         work.async {
             let t0 = Date()
-            let txt = shell("sh '\(rootDir)/transcribe.sh' '\(url.path)'")
+            let raw = shell("sh '\(rootDir)/transcribe.sh' '\(url.path)'")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let transcribeMs = ms(t0)
             try? FileManager.default.removeItem(at: url)
+
+            // refine.sh is fail-open by contract: on any error it echoes its input and
+            // explains on stderr, so `txt` is never emptier than the raw transcript.
+            var txt = raw, refineMs = 0
+            if mode == .refine && !raw.isEmpty {
+                DispatchQueue.main.async { if self.recordingMode == nil { self.icon("sparkles") } }
+                let t1 = Date()
+                txt = shell("printf '%s' \(esc(raw)) | sh '\(rootDir)/refine.sh'")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                refineMs = ms(t1)
+                if txt.isEmpty { log("[\(n)] refine returned nothing — pasting raw"); txt = raw }
+            }
 
             DispatchQueue.main.async {
                 var pasteMs = 0
@@ -214,10 +293,14 @@ final class Dictator: NSObject {
                     pasteMs = ms(t1)
                 }
                 self.inFlight -= 1
-                if self.inFlight == 0 && !self.recording { self.icon("mic") }
-                log("[\(n)] audio=\(String(format: "%.1f", seconds))s peak=\(String(format: "%.3f", take.peak)) "
-                    + "transcribe=\(transcribeMs)ms paste=\(pasteMs)ms total=\(ms(released))ms "
+                if self.inFlight == 0 && self.recordingMode == nil { self.icon("mic") }
+                log("[\(n)] \(mode.label) audio=\(String(format: "%.1f", seconds))s peak=\(String(format: "%.3f", take.peak)) "
+                    + "transcribe=\(transcribeMs)ms \(mode == .refine ? "refine=\(refineMs)ms " : "")"
+                    + "paste=\(pasteMs)ms total=\(ms(released))ms "
                     + "· \(txt.isEmpty ? "(empty)" : txt)")
+                // The model can silently drop a requirement, and the spoken original is
+                // then gone for good. Both texts are always recoverable from the log.
+                if mode == .refine && txt != raw { log("[\(n)]   raw: \(raw)") }
             }
         }
     }
