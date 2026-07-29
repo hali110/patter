@@ -200,6 +200,15 @@ Hard-won; re-deriving these costs hours.
 - **The Privacy list shows `CFBundleName`, not the filename.** It read `dictate`
   while the file was `DictateDaemon.app`, so the row was there and looked absent.
   Both are now `DictateDaemon`; keep them identical.
+- **The Privacy list is a renderer over the TCC database, not the database.** The
+  grant can be fully live with *no row visible at all* — that is how this ended:
+  `dictate doctor` reported accessibility, microphone and input monitoring all
+  granted while System Settings showed nothing. When the daemon calls
+  `AXIsProcessTrustedWithOptions(prompt:)` / `IOHIDRequestAccess`, TCC is written
+  directly; drawing the row is separate and unreliable for an ad-hoc signed app.
+  **Never debug this from the UI.** `AXIsProcessTrusted()` inside the daemon is the
+  only ground truth, which is what `dictate doctor` reports. A whole session went
+  into re-adding an app that was already authorised.
 - **Ad-hoc signing (`codesign -s -`) is why grants die on every rebuild.** TCC keys
   an app on its designated requirement; with no signing identity it falls back to
   the `cdhash`, which changes whenever the binary does, so macOS treats each build
