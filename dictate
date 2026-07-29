@@ -1,47 +1,181 @@
 #!/bin/sh
-# dictate — terminal push-to-talk. Enter = record, Enter = stop; transcript -> stdout + clipboard.
-# `dictate stop` shuts down the resident whisper-server (frees ~2GB RAM).
+# dictate — local hold-to-talk dictation for macOS. See CLAUDE.md for the rules.
+#
+#   dictate start | stop | build | doctor | test | bench | log
+#   dictate               terminal fallback loop (Enter records, Enter stops)
 SRC="$0"; [ -L "$SRC" ] && SRC="$(readlink "$SRC")"
 DIR="$(cd "$(dirname "$SRC")" && pwd)"
 MODEL="$DIR/models/ggml-large-v3-turbo.bin"
-WAV="${TMPDIR:-/tmp}/dictate-rec.wav"
+APP="$DIR/DictateDaemon.app"
+LOG="$DIR/daemon.log"
+PORT=8090
+TAB="$(printf '\t')"
 
-if [ "$1" = "stop" ]; then
-  pkill -f "dictate-daemon" 2>/dev/null && echo "daemon stopped"
-  pkill -f "whisper-server -m" 2>/dev/null && echo "whisper-server stopped" || echo "server not running"
-  exit 0
-fi
+server_up() { curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/"; }
 
-if [ "$1" = "start" ] || [ "$1" = "daemon" ]; then
+case "$1" in
+
+stop)
+  pkill -f "dictate-daemon" 2>/dev/null && echo "daemon stopped" || echo "daemon not running"
+  pkill -f "whisper-server -m" 2>/dev/null && echo "whisper-server stopped (~2GB freed)" || echo "server not running"
+  ;;
+
+start|daemon)
   pgrep -f "dictate-daemon" >/dev/null && { echo "already running (mic icon in menu bar)"; exit 0; }
+  [ -x "$APP/Contents/MacOS/dictate-daemon" ] || { echo "not built — run: dictate build"; exit 1; }
   # Via LaunchServices, not as a shell child: `open` makes the daemon its own TCC
-  # responsible process, so the Accessibility grant on the app applies (a
-  # terminal-spawned child gets attributed to the terminal instead).
-  open -g "$DIR/DictateDaemon.app"
-  sleep 1
+  # responsible process, so the grants on the app apply. A terminal-spawned child is
+  # attributed to the terminal instead and the grants are ignored.
+  # Remember where the log ended so we report *this* run's startup lines, not the
+  # last one's — the permission checks land ~2s in, well after `open` returns.
+  before=$(wc -l < "$LOG" 2>/dev/null || echo 0)
+  open -g "$APP"
+  i=0
+  while [ "$i" -lt 40 ]; do
+    tail -n "+$((before+1))" "$LOG" 2>/dev/null | grep -q "capture:" && break
+    sleep 0.2; i=$((i+1))
+  done
   if pgrep -f "dictate-daemon" >/dev/null; then
-    echo "mic icon in menu bar — hold right ⌥ anywhere to dictate (log: $DIR/daemon.log)"
+    echo "mic icon in menu bar — hold right ⌥ anywhere to dictate"
+    tail -n "+$((before+1))" "$LOG" | grep -E "accessibility:|input monitoring:|microphone:|capture:" \
+      | sed -E 's/^[^ ]+ /  /; s/(.{100}).*/\1…/'
   else
-    tail -5 "$DIR/daemon.log"
+    echo "daemon failed to start:"; tail -5 "$LOG"
   fi
-  exit 0
-fi
+  ;;
 
-if ! curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:8090/; then
-  echo "loading model into whisper-server..."
-  nohup whisper-server -m "$MODEL" --port 8090 --host 127.0.0.1 >/dev/null 2>&1 &
-  until curl -s -o /dev/null --max-time 0.3 http://127.0.0.1:8090/; do sleep 0.2; done
-fi
+build)
+  echo "compiling..."
+  swiftc -O "$DIR"/daemon/*.swift -o "$APP/Contents/MacOS/dictate-daemon" || exit 1
+  codesign -s - -f "$APP" >/dev/null 2>&1 || { echo "codesign failed"; exit 1; }
+  echo "built + signed: $(du -h "$APP/Contents/MacOS/dictate-daemon" | cut -f1) binary"
+  if pgrep -f "dictate-daemon" >/dev/null; then
+    pkill -f "dictate-daemon"; sleep 1; open -g "$APP"; sleep 1
+    echo "daemon restarted"
+  fi
+  # The grants track the code signature, which changes on every rebuild.
+  echo "⚠  re-toggle DictateDaemon.app in System Settings → Privacy & Security →"
+  echo "   Accessibility AND Input Monitoring (both are required, and both reset on rebuild)"
+  ;;
 
-echo "dictate ready — transcripts print here AND land on the clipboard (⌘V anywhere)"
-while :; do
-  printf '\n[Enter] record · [q] quit > '
-  read -r k || exit 0; [ "$k" = "q" ] && exit 0
-  ffmpeg -y -loglevel quiet -f avfoundation -i ":0" -ar 16000 -ac 1 "$WAV" &
-  FPID=$!
-  printf '🎤 recording... [Enter] stop > '
-  read -r _
-  kill -INT "$FPID" 2>/dev/null; wait "$FPID" 2>/dev/null
-  txt="$(sh "$DIR/transcribe.sh" "$WAV")"
-  if [ -n "$txt" ]; then printf '%s' "$txt" | pbcopy; printf '📋 %s\n' "$txt"; else echo "(no speech)"; fi
-done
+doctor)
+  fail=0
+  chk() { if [ "$1" = 0 ]; then printf '  ✓ %s\n' "$2"; else printf '  ✗ %s\n' "$2"; fail=1; fi; }
+  echo "binaries"
+  for b in whisper-server whisper-cli ffmpeg swiftc; do
+    command -v "$b" >/dev/null; chk $? "$b$([ -z "$(command -v $b)" ] && echo ' — brew install whisper-cpp ffmpeg')"
+  done
+  echo "assets"
+  [ -f "$MODEL" ]; chk $? "model ($([ -f "$MODEL" ] && du -h "$MODEL" | cut -f1 || echo 'missing — see README'))"
+  [ -x "$APP/Contents/MacOS/dictate-daemon" ]; chk $? "daemon binary (dictate build)"
+  echo "runtime"
+  pgrep -f "dictate-daemon" >/dev/null; chk $? "daemon running (dictate start)"
+  server_up; chk $? "whisper-server on :$PORT"
+  # The daemon is the only process that can observe its own TCC grants; it logs them
+  # at startup, so doctor reports what the black box last saw.
+  # A running process cannot see a TCC toggle flipped after it launched, so these are
+  # necessarily a snapshot. Print when it was taken — a stale ✗ after you just granted
+  # something is the single most confusing thing this tool can show you.
+  started=$(grep "root:" "$LOG" 2>/dev/null | tail -1 | cut -d'.' -f1 | tr 'T' ' ')
+  stale=0
+  echo "permissions (read at daemon start, ${started:-unknown})"
+  for svc in accessibility microphone "input monitoring"; do
+    line=$(grep -i "^.*$svc:" "$LOG" 2>/dev/null | tail -1)
+    # Negative cases first: "NOT trusted" contains "trusted".
+    case "$line" in
+      "") printf '  ? %s — no record, run: dictate start\n' "$svc"; fail=1 ;;
+      *NOT\ trusted*|*DENIED*|*"not yet"*) printf '  ✗ %s\n' "$(printf '%s' "${line#* }" | cut -c1-72)"; fail=1; stale=1 ;;
+      *granted*|*trusted*) printf '  ✓ %s\n' "$svc" ;;
+      *) printf '  ✗ %s\n' "$(printf '%s' "${line#* }" | cut -c1-72)"; fail=1; stale=1 ;;
+    esac
+  done
+  [ "$stale" = 1 ] && echo "  ↻ already flipped the toggle? this snapshot predates it: dictate stop && dictate start"
+  [ "$fail" = 0 ] && echo "all good" || echo "→ fix the ✗ lines above"
+  exit "$fail"
+  ;;
+
+test)
+  pass=0; fail=0
+  while IFS="$TAB" read -r raw want; do
+    case "$raw" in \#*|"") continue ;; esac
+    got=$(printf '%s' "$raw" | sh "$DIR/clean.sh")
+    if [ "$got" = "$want" ]; then
+      pass=$((pass+1))
+    else
+      fail=$((fail+1))
+      printf '  FAIL  in:   %s\n        want: %s\n        got:  %s\n' "$raw" "$want" "$got"
+    fi
+  done < "$DIR/tests/replacements.tsv"
+  echo "$pass passed, $fail failed"
+  [ "$fail" = 0 ] || exit 1
+  ;;
+
+bench)
+  command -v whisper-server >/dev/null || { echo "whisper-cpp not installed — run: dictate doctor"; exit 1; }
+  TMP="${TMPDIR:-/tmp}/dictate-bench"; mkdir -p "$TMP"
+  server_up || { echo "starting whisper-server (cold load ~10s)..."
+    nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >/dev/null 2>&1 &
+    until server_up; do sleep 0.2; done; }
+
+  echo "transcription latency (resident model, Metal):"
+  for n in 1 3 10; do
+    phrase=""; i=0
+    while [ "$i" -lt "$n" ]; do phrase="$phrase Restart the rosbag on tyler zero one and check the pinpoint odometry."; i=$((i+1)); done
+    say -o "$TMP/b.aiff" "$phrase"
+    ffmpeg -y -loglevel quiet -i "$TMP/b.aiff" -ar 16000 -ac 1 "$TMP/b.wav"
+    dur=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "$TMP/b.wav")
+    sh "$DIR/transcribe.sh" "$TMP/b.wav" >/dev/null   # warm
+    t0=$(python3 -c 'import time;print(time.time())')
+    out=$(sh "$DIR/transcribe.sh" "$TMP/b.wav")
+    t1=$(python3 -c 'import time;print(time.time())')
+    python3 -c "print(f'  {$dur:5.1f}s audio -> {($t1-$t0)*1000:5.0f} ms  ({$dur/($t1-$t0):4.1f}x realtime)')"
+    [ "$n" = 1 ] && echo "        transcript: $out"
+  done
+
+  echo "capture onset loss (speech lost before the first sample lands):"
+  ffmpeg -y -loglevel quiet -f avfoundation -i ":default" -ar 16000 -ac 1 "$TMP/c.wav" & P=$!
+  python3 -c "import time; time.sleep(1.5)"
+  kill -INT "$P" 2>/dev/null; wait "$P" 2>/dev/null
+  cap=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "$TMP/c.wav")
+  python3 -c "print(f'  ffmpeg subprocess (CLI path):  {(1.5-$cap)*1000:4.0f} ms')"
+  # Runs the daemon's actual Recorder, so this row cannot drift from the shipped code.
+  swiftc -O -parse-as-library "$DIR/daemon/Core.swift" "$DIR/daemon/Recorder.swift" \
+      "$DIR/tests/capture-probe.swift" -o "$TMP/probe" 2>/dev/null \
+    && "$TMP/probe" "$TMP/p.wav" | grep '^trial' | sed 's/^/  AVAudioEngine (daemon path): /' \
+    || echo "  AVAudioEngine (daemon path): probe failed to build"
+  rm -rf "$TMP"
+  ;;
+
+log)
+  tail -f "$LOG"
+  ;;
+
+"")
+  [ -f "$MODEL" ] || { echo "model missing — run: dictate doctor"; exit 1; }
+  WAV="${TMPDIR:-/tmp}/dictate-rec.wav"
+  if ! server_up; then
+    echo "loading model into whisper-server..."
+    nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >/dev/null 2>&1 &
+    until server_up; do sleep 0.2; done
+  fi
+  echo "dictate ready — transcripts print here AND land on the clipboard (⌘V anywhere)"
+  while :; do
+    printf '\n[Enter] record · [q] quit > '
+    read -r k || exit 0; [ "$k" = "q" ] && exit 0
+    # ":default" not ":0" — index 0 is whatever ffmpeg enumerated first, which changes
+    # when you plug in an interface.
+    ffmpeg -y -loglevel quiet -f avfoundation -i ":default" -ar 16000 -ac 1 "$WAV" &
+    FPID=$!
+    printf '🎤 recording... [Enter] stop > '
+    read -r _
+    kill -INT "$FPID" 2>/dev/null; wait "$FPID" 2>/dev/null
+    txt="$(sh "$DIR/transcribe.sh" "$WAV")"
+    if [ -n "$txt" ]; then printf '%s' "$txt" | pbcopy; printf '📋 %s\n' "$txt"; else echo "(no speech)"; fi
+  done
+  ;;
+
+*)
+  echo "usage: dictate [start|stop|build|doctor|test|bench|log]"
+  exit 1
+  ;;
+esac

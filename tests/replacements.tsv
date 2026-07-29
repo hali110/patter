@@ -1,0 +1,30 @@
+# raw whisper output <TAB> expected cleaned text
+# One case per replacements.sed rule, plus the near-misses each rule must NOT touch.
+# Run with: dictate test
+Restart the pixie environment	Restart the pixi environment
+Play the ross bag	Play the rosbag
+Play the rossbag	Play the rosbag
+Launch ros two nodes	Launch ros2 nodes
+Deploy to tyler zero one	Deploy to tyler01
+Deploy to tyler oh one	Deploy to tyler01
+Deploy to tyler zero zero	Deploy to tyler00
+Check the od ometry	Check the odometry
+Flash the teensie	Flash the Teensy
+Flash the tinsy	Flash the Teensy
+The robo claw driver	The RoboClaw driver
+The pin point sensor	The Pinpoint sensor
+Ask watson about it	Ask Wattson about it
+Ask what son about it	Ask Wattson about it
+Plot the odometry raw topic	Plot the odom_raw topic
+Plot the odom raw topic	Plot the odom_raw topic
+The ekf diverged	The EKF diverged
+Measure lvt in sqft	Measure LVT in sqft
+Mark it x fail	Mark it xfail
+Check out the work tree	Check out the worktree
+Read claude md first	Read CLAUDE.md first
+# Negative cases: real words that unanchored rules used to corrupt.
+Trace the network tree	Trace the network tree
+The bulldozer worked fine	The bulldozer worked fine
+Repaint the pinpointer	Repaint the pinpointer
+# Whitespace normalisation.
+  padded   text  	padded text

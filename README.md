@@ -1,23 +1,52 @@
 # dictate
 
-Local jargon-aware dictation for macOS. whisper.cpp (large-v3-turbo, Metal) + a
-menu-bar hold-to-talk daemon. No cloud, no telemetry.
+Local jargon-aware dictation for macOS. Hold right ⌥ anywhere, speak, release —
+text lands at the cursor. whisper.cpp (large-v3-turbo, Metal), ~400ms per
+utterance. No cloud, no telemetry.
+
+Project rules and the latency budget live in [CLAUDE.md](CLAUDE.md).
 
 ## Use
 
-- `dictate start` — daemon: hold right ⌥ anywhere, speak, release → text pastes at cursor. Mic icon in menu bar (mic = idle, filled = recording, … = transcribing).
-- `dictate` — terminal loop: Enter records, Enter stops, transcript → stdout + clipboard.
-- `dictate stop` — kill daemon + free the resident model (~2GB RAM).
+| | |
+|---|---|
+| `dictate start` | run the daemon — hold right ⌥ anywhere to dictate |
+| `dictate stop` | kill the daemon and free the resident model (~2GB) |
+| `dictate doctor` | check every dependency, process, and permission |
+| `dictate build` | rebuild + re-sign the daemon after a source change |
+| `dictate test` | run the jargon/replacement suite |
+| `dictate bench` | print the latency table |
+| `dictate log` | follow `daemon.log` |
+| `dictate` | terminal fallback: Enter records, Enter stops, transcript → stdout + clipboard |
+
+Menu bar icon: mic = idle, filled = recording, ellipsis = transcribing.
 
 ## Setup (once)
 
-1. `brew install whisper-cpp ffmpeg` and download `models/ggml-large-v3-turbo.bin` from ggerganov/whisper.cpp on Hugging Face.
-2. Build: `cd daemon && swiftc -O main.swift -o ../DictateDaemon.app/Contents/MacOS/dictate-daemon && codesign -s - -f ../DictateDaemon.app`
-3. System Settings → Privacy & Security → Accessibility → "+" → add `DictateDaemon.app` (needed for the paste keystroke). Re-toggle after every rebuild — the grant tracks the app. The daemon must be launched via `dictate start` (`open -g`, i.e. LaunchServices) — run directly from a terminal it inherits the terminal's TCC identity and the grant is ignored; a launchd job can't exec from ~/Documents at all (EX_CONFIG).
-4. First recording prompts once for Microphone (for "dictate") — allow.
-5. Symlink onto PATH: `ln -s "$PWD/dictate" /opt/homebrew/bin/dictate`
+1. `brew install whisper-cpp ffmpeg`
+2. Download `ggml-large-v3-turbo.bin` into `models/` from
+   [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) on Hugging Face.
+3. `ln -s "$PWD/dictate" /opt/homebrew/bin/dictate`
+4. `dictate build && dictate start`
+5. Grant the two permissions it asks for, then `dictate doctor` until it prints
+   `all good`.
+
+### Permissions
+
+`DictateDaemon.app` needs **both**, in System Settings → Privacy & Security:
+
+- **Input Monitoring** — to see the right-⌥ hold.
+- **Accessibility** — to post the ⌘V that pastes at your cursor.
+
+Both grants track the code signature, so **both reset on every `dictate build`** —
+re-toggle the checkboxes. `dictate doctor` tells you which one is missing.
+
+The daemon must be launched by `dictate start`, which uses `open -g`
+(LaunchServices) so the process is its own TCC responsible process. Started as a
+terminal child it is attributed to the terminal and the grants are ignored.
 
 ## Tuning
 
 - `jargon.txt` — vocabulary bias fed to whisper as a decode prompt (~224-token budget).
-- `replacements.sed` — deterministic fixes for recurring mishears; grow it over time.
+- `replacements.sed` — deterministic fixes for recurring mishears. Word-anchor every
+  rule and add a case to `tests/replacements.tsv`, then `dictate test`.

@@ -1,4 +1,6 @@
 models/
 DictateDaemon.app/Contents/MacOS/
-daemon.log
 DictateDaemon.app/Contents/_CodeSignature/
+daemon.log
+daemon.log.1
+.DS_Store
