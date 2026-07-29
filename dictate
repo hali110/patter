@@ -91,9 +91,63 @@ build)
         echo "      ${running_app%%/Contents*}"
         echo "      to run THIS build instead: dictate stop && dictate start" ;;
   esac
-  # The grants track the code signature, which changes on every rebuild.
-  echo "⚠  re-toggle DictateDaemon.app in System Settings → Privacy & Security →"
-  echo "   Accessibility AND Input Monitoring (both are required, and both reset on rebuild)"
+  # Ad-hoc signing (codesign -s -) makes the designated requirement a bare cdhash,
+  # which changes whenever the binary does. macOS therefore treats every rebuild as
+  # a different app and ORPHANS the old grant rather than updating it. Signing with
+  # a real or self-signed certificate would fix this permanently; until then, every
+  # swiftc run costs a trip through System Settings.
+  cat <<'WARN'
+⚠  THIS REBUILD JUST INVALIDATED YOUR ACCESSIBILITY AND INPUT MONITORING GRANTS.
+   Ad-hoc signing keys them to the binary's hash, so macOS now sees a new app.
+
+   Re-grant, in this order, or the hotkey stays deaf:
+     1. dictate permissions      (resets stale entries and reopens the panes)
+     2. toggle DictateDaemon ON in Accessibility AND Input Monitoring
+     3. dictate stop && dictate start
+
+   Editing the `dictate` script, jargon.txt, replacements.sed or refine.txt does
+   NOT require a rebuild and does NOT cost you the grants. Only daemon/*.swift does.
+WARN
+  ;;
+
+permissions)
+  # One command for the whole re-grant dance, because it has to be done in order
+  # and every step of it has burned an hour at least once.
+  LS=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  echo "1. stopping daemon and System Settings"
+  pkill -f "dictate-daemon" 2>/dev/null
+  killall "System Settings" 2>/dev/null
+  sleep 1
+
+  # A bundle registered from a deleted checkout makes System Settings bind the grant
+  # to a path that no longer exists: the row never appears and no amount of
+  # re-adding helps. Any DictateDaemon.app outside this directory is stale.
+  echo "2. clearing stale LaunchServices registrations"
+  "$LS" -dump 2>/dev/null | grep -oE '/[^ ]*DictateDaemon\.app' | sort -u | while read -r p; do
+    case "$p" in
+      "$APP") ;;
+      *) echo "     unregistering stale: $p"; "$LS" -u "$p" 2>/dev/null ;;
+    esac
+  done
+  "$LS" -f "$APP"
+
+  echo "3. resetting TCC for com.haider.dictate"
+  tccutil reset Accessibility com.haider.dictate >/dev/null 2>&1
+  tccutil reset ListenEvent   com.haider.dictate >/dev/null 2>&1
+
+  echo "4. starting daemon (it re-registers itself in both lists)"
+  open -g "$APP"; sleep 4
+
+  echo "5. opening the panes"
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+  echo
+  echo "   Toggle ON the row named 'DictateDaemon' in BOTH:"
+  echo "     • Accessibility     (lets it paste with ⌘V)"
+  echo "     • Input Monitoring  (lets it hear the hotkey)"
+  echo "   If a row is missing: + then ⌘⇧G and paste"
+  echo "     $APP"
+  echo
+  echo "   Then: dictate stop && dictate start    (grants are read at startup only)"
   ;;
 
 doctor)
@@ -270,7 +324,7 @@ log)
   ;;
 
 *)
-  echo "usage: dictate [start|stop|build|doctor|test|bench|log|refine|pull-model]"
+  echo "usage: dictate [start|stop|build|doctor|permissions|test|bench|log|refine|pull-model]"
   exit 1
   ;;
 esac

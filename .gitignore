@@ -12,3 +12,4 @@ servers.log
 .bench-tmp/
 .probe-tmp/
 .dictate-rec.wav
+tcc-trace.log
