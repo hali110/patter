@@ -323,6 +323,25 @@ log)
   done
   ;;
 
+takes)
+  # Retention of raw audio + pre-clean transcripts, for offline speech analysis.
+  # Never on by default: this is the only thing here that persists microphone audio.
+  TAKES="$DIR/takes"
+  case "$2" in
+    on)  mkdir -p "$TAKES" && touch "$TAKES/.enabled"
+         echo "takes: ON — every transcribed utterance retains a .wav and pre-clean .txt in takes/"
+         echo "       ~290KB per take (~67MB/day at yesterday's rate), pruned at 5000 takes"
+         echo "       off with: dictate takes off" ;;
+    off) rm -f "$TAKES/.enabled"
+         echo "takes: OFF — existing takes kept. Delete them with: rm -rf $TAKES" ;;
+    ""|status)
+         if [ -f "$TAKES/.enabled" ]; then s="ON"; else s="OFF"; fi
+         n=$(ls "$TAKES"/*.wav 2>/dev/null | wc -l | tr -d ' ')
+         echo "takes: $s — $n retained ($(du -sh "$TAKES" 2>/dev/null | cut -f1 || echo 0B))" ;;
+    *)   echo "usage: dictate takes [on|off|status]"; exit 1 ;;
+  esac
+  ;;
+
 prompting)
   # Measures whether Haider's prompting is improving, from the session logs plus
   # daemon.log. Not a dictation feature — it is the evidence base for whether the
@@ -333,7 +352,7 @@ prompting)
   ;;
 
 *)
-  echo "usage: dictate [start|stop|build|doctor|permissions|test|bench|log|refine|prompting|pull-model]"
+  echo "usage: dictate [start|stop|build|doctor|permissions|test|bench|log|refine|prompting|takes|pull-model]"
   exit 1
   ;;
 esac

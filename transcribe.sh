@@ -27,4 +27,28 @@ else
     || { echo "transcribe: whisper-cli failed" >&2; exit 1; }
 fi
 
+# Retain the take for offline speech analysis, when switched on with `dictate takes on`.
+# Off unless takes/.enabled exists — this is the only thing in the project that persists
+# microphone audio, and that is a decision to make deliberately, not a default.
+#
+# Here rather than in the daemon for two reasons. It is the single path both the daemon
+# and the CLI go through (invariant 3), so one edit covers both. And a shell change needs
+# no rebuild: rebuilding the daemon re-signs the binary, which orphans the Accessibility
+# grant and costs the whole re-toggle dance every time (CLAUDE.md).
+#
+# The *pre-clean* transcript is stored on purpose. replacements.sed exists to make text
+# land correctly at a cursor; for asking "what did whisper actually hear" it is damage.
+if [ -f "$DIR/takes/.enabled" ]; then
+  ts=$(date +%Y%m%d-%H%M%S)-$$
+  if cp "$1" "$DIR/takes/$ts.wav" 2>/dev/null; then
+    printf '%s' "$raw" > "$DIR/takes/$ts.txt"
+  else
+    echo "transcribe: could not retain take $ts" >&2
+  fi
+  # Bounded like daemon.log is. ~5000 takes is ~1.5GB at the measured 290KB mean, which
+  # is months of use. Backgrounded so pruning never lands on the hot path.
+  ( ls -t "$DIR"/takes/*.wav 2>/dev/null | tail -n +5001 | while read -r f; do
+      rm -f "$f" "${f%.wav}.txt"; done ) >/dev/null 2>&1 &
+fi
+
 printf '%s' "$raw" | sh "$DIR/clean.sh"

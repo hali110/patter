@@ -12,4 +12,7 @@ servers.log
 .bench-tmp/
 .probe-tmp/
 .dictate-rec.wav
+# Retained microphone audio + pre-clean transcripts (`dictate takes on`). Never
+# commit these — they are raw recordings of whatever was said near the machine.
+takes/
 tcc-trace.log
