@@ -39,7 +39,7 @@ Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
 | Capture onset loss | ≤150 ms | 63–150 ms | CoreAudio device start. Audio before this is gone. |
 | Capture tail loss | ≤25 ms | ~21 ms | One 1024-frame tap buffer, in flight at key release. |
 | Release → paste | ≤600 ms | 393–561 ms in real use | Dominated by one fixed 30s encoder window. 22s of speech costs 561 ms. |
-| Refine (right ⌘ only) | ≤2000 ms | 321–1259 ms | Local 7B on Metal. Scales with **output** length, unlike whisper. Off the right-⌥ path entirely. |
+| Refine (right ⌘ only) | ≤2000 ms | 480–**2175 ms** | Local 7B on Metal. Scales with **output** length, unlike whisper. Off the right-⌥ path entirely. Top of range **breaches budget** on one 138-word take (1924/2175 ms across two runs), accepted knowingly when `refine.txt` was rewritten to stop dropping context — see the log. Median take ~1200 ms. |
 | Paste | ≤10 ms | 0–7 ms | Pasteboard write + synthetic ⌘V. |
 | `sh` + `curl` overhead | ~25 ms | 25 ms | Price of invariant 3. Deliberate. Do not "optimize" it. |
 | Cold model load | ~10 s | — | Once, at `dictate start`. Never on the hot path. |
