@@ -1,0 +1,30 @@
+#!/bin/sh
+# Block microphone recordings and logs from ever entering git history.
+#
+# .gitignore is the fence; this is the lock. It exists because `git add -f`, a
+# stray `git add -A`, or a future contributor's tooling can all defeat an ignore
+# rule, and a file committed once is in history permanently — deleting it later
+# does not remove it. `takes/` holds raw recordings of whatever was said near
+# the machine, and daemon.log holds the transcript of every utterance ever
+# dictated. Neither is recoverable from a mistake.
+#
+# Tracked in .githooks/ rather than .git/hooks/ so it survives a clone. Activated
+# by `git config core.hooksPath .githooks`, which `dictate doctor` checks.
+#
+# Bypass, if a case ever genuinely warrants it, is the standard `--no-verify`.
+
+staged=$(git diff --cached --name-only --diff-filter=A)
+[ -n "$staged" ] || exit 0
+
+bad=$(printf '%s\n' "$staged" | grep -Ei '(^|/)takes/|\.(wav|aiff|aif|mp3|m4a|caf|flac|ogg)$|\.log(\.[0-9]+)?$')
+
+[ -n "$bad" ] || exit 0
+
+echo "pre-commit: BLOCKED — refusing to commit recordings or logs." >&2
+echo >&2
+printf '%s\n' "$bad" | sed 's/^/  /' >&2
+echo >&2
+echo "These are private and unrecoverable once in history. If a file here is" >&2
+echo "genuinely not a recording or a log, unstage it and rename it; if you are" >&2
+echo "certain, re-run with --no-verify." >&2
+exit 1

@@ -164,6 +164,14 @@ doctor)
   [ -f "$MODEL" ]; chk $? "model ($([ -f "$MODEL" ] && du -h "$MODEL" | cut -f1 || echo 'missing — see README'))"
   [ -f "$REFINE_MODEL" ]; chk $? "refine model ($([ -f "$REFINE_MODEL" ] && du -h "$REFINE_MODEL" | cut -f1 || echo 'missing — dictate pull-model'))"
   [ -x "$APP/Contents/MacOS/dictate-daemon" ]; chk $? "daemon binary (dictate build)"
+  echo "privacy"
+  # core.hooksPath is local config, so a fresh clone has the hook file but not the
+  # hook. Checked here because a silently inactive guard is worse than none — it
+  # is the one that gets trusted.
+  [ "$(git -C "$DIR" config core.hooksPath 2>/dev/null)" = ".githooks" ]
+  chk $? "pre-commit guard active (git -C '$DIR' config core.hooksPath .githooks)"
+  ! git -C "$DIR" ls-files --error-unmatch takes >/dev/null 2>&1
+  chk $? "no takes/ tracked by git"
   echo "runtime"
   pgrep -f "dictate-daemon" >/dev/null; chk $? "daemon running (dictate start)"
   server_up; chk $? "whisper-server on :$PORT"
@@ -329,16 +337,33 @@ takes)
   TAKES="$DIR/takes"
   case "$2" in
     on)  mkdir -p "$TAKES" && touch "$TAKES/.enabled"
-         echo "takes: ON — every transcribed utterance retains a .wav and pre-clean .txt in takes/"
-         echo "       ~290KB per take (~67MB/day at yesterday's rate), pruned at 5000 takes"
+         echo "takes: ON — every transcribed utterance retains a .wav and pre-clean .txt"
+         echo "       in $TAKES (gitignored, never committed)"
+         echo "       ~290KB per take, ~67MB/day at measured usage. Nothing is ever"
+         echo "       auto-deleted; check growth with: dictate takes status"
          echo "       off with: dictate takes off" ;;
     off) rm -f "$TAKES/.enabled"
-         echo "takes: OFF — existing takes kept. Delete them with: rm -rf $TAKES" ;;
+         echo "takes: OFF — retention stopped. Everything already collected is kept." ;;
     ""|status)
          if [ -f "$TAKES/.enabled" ]; then s="ON"; else s="OFF"; fi
          n=$(ls "$TAKES"/*.wav 2>/dev/null | wc -l | tr -d ' ')
-         echo "takes: $s — $n retained ($(du -sh "$TAKES" 2>/dev/null | cut -f1 || echo 0B))" ;;
-    *)   echo "usage: dictate takes [on|off|status]"; exit 1 ;;
+         sz=$(du -sh "$TAKES" 2>/dev/null | cut -f1); [ -n "$sz" ] || sz="0B"
+         echo "takes: $s — $n retained, $sz in $TAKES"
+         echo "       nothing is auto-deleted; free space: $(df -h "$DIR" | awk 'NR==2{print $4}')" ;;
+    purge)
+         # Explicit, confirmed, and never invoked by anything else. Retention exists
+         # because these recordings are not reproducible; deleting them is a decision.
+         n=$(ls "$TAKES"/*.wav 2>/dev/null | wc -l | tr -d ' ')
+         [ "$n" -gt 0 ] || { echo "takes: nothing to purge"; exit 0; }
+         echo "About to permanently delete $n take(s) ($(du -sh "$TAKES" 2>/dev/null | cut -f1)) from:"
+         echo "  $TAKES"
+         echo "These are microphone recordings and cannot be regenerated."
+         printf 'Type DELETE to confirm: '
+         read -r c
+         [ "$c" = "DELETE" ] || { echo "takes: cancelled, nothing deleted"; exit 0; }
+         rm -f "$TAKES"/*.wav "$TAKES"/*.txt
+         echo "takes: purged $n take(s). Retention is still $([ -f "$TAKES/.enabled" ] && echo ON || echo OFF)." ;;
+    *)   echo "usage: dictate takes [on|off|status|purge]"; exit 1 ;;
   esac
   ;;
 
@@ -351,8 +376,42 @@ prompting)
   exec /usr/bin/python3 "$DIR/prompting-stats.py" "$@"
   ;;
 
+help|-h|--help)
+  cat <<'USAGE'
+dictate — hold right ⌥, speak, release, text lands at the cursor. Fully local.
+          right ⌘ does the same but restructures the speech first.
+
+daemon
+  start           launch the daemon (loads models; ~10s once, never on the hot path)
+  stop            kill the daemon and both model servers
+  build           recompile + re-sign, then restart. Re-toggle Accessibility after.
+  log             tail daemon.log — one line per utterance, with per-stage ms
+
+health
+  doctor          binaries, models, servers, TCC grants, privacy guards
+  permissions     the Accessibility / Input Monitoring re-grant dance, one command
+  pull-model      fetch the 7B refine model for the right-⌘ path
+
+text pipeline
+  test            run tests/replacements.tsv through the real pipeline
+  refine-test     assert refine.txt properties (requirements survive, filler does not)
+  bench           per-stage latency table
+  refine          pipe text in, get the restructured version out
+
+analysis
+  takes [on|off|status|purge]
+                  retain audio + pre-clean transcripts in takes/ for offline
+                  speech analysis. Off by default. Nothing is auto-deleted.
+  prompting [--split]
+                  measure prompting quality over time from the session logs
+
+  (no arguments)  interactive terminal mode — Enter to record, transcript to stdout
+USAGE
+  ;;
+
 *)
-  echo "usage: dictate [start|stop|build|doctor|permissions|test|bench|log|refine|prompting|takes|pull-model]"
+  echo "dictate: unknown command '$1'"
+  echo "usage: dictate [start|stop|build|doctor|permissions|test|refine-test|bench|log|refine|prompting|takes|pull-model|help]"
   exit 1
   ;;
 esac

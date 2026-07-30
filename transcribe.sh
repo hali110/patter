@@ -45,10 +45,12 @@ if [ -f "$DIR/takes/.enabled" ]; then
   else
     echo "transcribe: could not retain take $ts" >&2
   fi
-  # Bounded like daemon.log is. ~5000 takes is ~1.5GB at the measured 290KB mean, which
-  # is months of use. Backgrounded so pruning never lands on the hot path.
-  ( ls -t "$DIR"/takes/*.wav 2>/dev/null | tail -n +5001 | while read -r f; do
-      rm -f "$f" "${f%.wav}.txt"; done ) >/dev/null 2>&1 &
+  # NOTHING IS PRUNED HERE, deliberately. An earlier version rotated at 5000 takes like
+  # daemon.log does, which was wrong: a log line is regenerable and a recording is not.
+  # Silently deleting a take the user believed was kept is the same failure class as
+  # silently eating an utterance, which CLAUDE.md calls the worst bug this project has.
+  # Growth is ~67MB/day at measured usage; `dictate takes status` reports size, and
+  # deleting is an explicit `dictate takes purge`.
 fi
 
 printf '%s' "$raw" | sh "$DIR/clean.sh"
