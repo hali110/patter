@@ -70,6 +70,21 @@ SIGNALS = {
         r"cna|delte|ive|dont|doesnt|wont|cant|waht|wjat)\b", re.I),
 }
 
+# Hedges and minimisers — the "be more assertive" signal.
+#
+# Measured as density per 100 words, NOT as a share of prompts like everything
+# above: a longer prompt contains more hedges for free, so a percentage would
+# just re-measure length. Density is comparable across prompts of any size.
+#
+# These survive transcription, which is the whole reason this column exists.
+# Whisper deletes "um"/"uh" before anything downstream sees them (0 occurrences
+# in 212 real transcripts), so filler-sound counting needs audio that is not
+# currently retained — see SPEECH_TODO.md item 3. Hedges need nothing new.
+HEDGES = re.compile(
+    r"\b(just|really|actually|basically|maybe|perhaps|probably|somewhat|"
+    r"kind of|sort of|a little|a bit|pretty much|i guess|i think|i feel like|"
+    r"or something|i don'?t know|if that makes sense)\b", re.I)
+
 
 def load_prompts():
     """Every human-authored prompt, as (local_datetime, text)."""
@@ -139,11 +154,13 @@ def profile(texts):
     }
     for name, pat in SIGNALS.items():
         row[name] = sum(1 for t in texts if pat.search(t)) * 100 // max(1, len(texts))
+    hits = sum(len(HEDGES.findall(t)) for t in texts)
+    row["hedge/100w"] = round(hits * 100 / max(1, sum(w)), 1)
     return row
 
 
 COLS = ["n", "median", "<=5w", ">=30w", "constraint", "reasoning",
-        "hypothesis", "@file/slash", "bare-cont", "typos"]
+        "hypothesis", "@file/slash", "bare-cont", "typos", "hedge/100w"]
 
 
 def table(rows, label):
@@ -153,7 +170,7 @@ def table(rows, label):
         cells = []
         for c in COLS:
             v = r[c]
-            cells.append(f"{v}" if c in ("n", "median") else f"{v}%")
+            cells.append(f"{v}" if c in ("n", "median", "hedge/100w") else f"{v}%")
         print(f"| {name} | " + " | ".join(cells) + " |")
 
 
