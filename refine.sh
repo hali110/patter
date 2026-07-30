@@ -69,4 +69,23 @@ out=$(printf '%s' "$out" \
 # Re-apply the jargon replacements: the model is told to keep technical nouns
 # verbatim but is not guaranteed to, and invariant 3 says a jargon fix has to hold
 # on every path. Costs ~10ms on a ~1500ms stage.
+# Persist the raw -> refined pair when retention is on. This is the eval corpus for
+# every future refine decision (a model swap is unmeasurable without it), and until
+# now it existed ONLY as a `raw:` line in daemon.log — a file the daemon rotates at
+# 1MB keeping two generations, silently destroying the third. That line was built for
+# forensics ("did the model drop a requirement"), then quietly relied on as storage;
+# only the forensic durability was ever designed for.
+#
+# Captured here because refine.sh is the one place that sees both halves, and because
+# a shell change costs no rebuild and therefore no Accessibility grant. One
+# self-contained file per pair, so nothing has to be joined by timestamp later.
+#
+# Only reached when the model actually ran: every passthrough() exits before this, and
+# a passthrough has no pair to record.
+if [ -f "$DIR/takes/.enabled" ]; then
+  { printf '=== raw ===\n%s\n=== refined ===\n%s\n' "$raw" "$out"; } \
+    > "$DIR/takes/$(date +%Y%m%d-%H%M%S)-$$.pair.txt" \
+    || echo "refine: could not retain pair" >&2
+fi
+
 printf '%s' "$out" | sh "$DIR/clean.sh"
