@@ -85,7 +85,7 @@ start|daemon)
     sleep 0.2; i=$((i+1))
   done
   if pgrep -f "dictate-daemon" >/dev/null; then
-    echo "mic icon in menu bar — hold right ⌥ to dictate, right ⌘ to dictate + restructure, tap right ⌃ to delete the last paste"
+    echo "mic icon in menu bar — hold right ⌥ to dictate, right ⌘ to dictate + restructure; menu → Delete Last Dictation to erase the last paste"
     tail -n "+$((before+1))" "$LOG" | grep -E "accessibility:|input monitoring:|microphone:|capture:" \
       | sed -E 's/^[^ ]+ /  /; s/(.{100}).*/\1…/'
   else
@@ -401,7 +401,8 @@ help|-h|--help)
   cat <<'USAGE'
 dictate — hold right ⌥, speak, release, text lands at the cursor. Fully local.
           right ⌘ does the same but restructures the speech first.
-          tap right ⌃ to delete the last paste (until you type, click, or dictate again).
+          menu bar → Delete Last Dictation erases the last paste
+          (until you type, click, or dictate again).
 
 daemon
   start           launch the daemon (loads models; ~10s once, never on the hot path)

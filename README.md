@@ -9,9 +9,9 @@ utterance. No cloud, no telemetry.
 written request — ~700ms–1.8s end to end. Right ⌥ is unchanged and never touches
 the model. Both texts go to `daemon.log`.
 
-**Tap right ⌃** to delete what was just pasted — it backspaces the exact text,
-and disarms itself the moment you type, click, or dictate again so it can never
-eat anything else.
+**Delete Last Dictation** in the menu bar removes what was just pasted — it
+backspaces the exact text, and disarms itself (item greys out) the moment you
+type, click, or dictate again so it can never eat anything else.
 
 Project rules and the latency budget live in [CLAUDE.md](CLAUDE.md).
 
