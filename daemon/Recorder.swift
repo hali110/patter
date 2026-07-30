@@ -112,9 +112,35 @@ final class Recorder {
         return nil
     }
 
+    /// The pin from prepare() does not survive Bluetooth churn: AudioDeviceIDs are
+    /// not stable, and when AirPods disconnect and rejoin the AUHAL falls back to
+    /// the system default input (the AirPods) with *no* configuration-change
+    /// notification — so the rebuild path never runs. Caught live in daemon.log:
+    /// peak jumped 0.05→0.63 with no "configuration changed" line in between.
+    /// Re-checking here, before the device is opened, is what actually prevents
+    /// the audio freeze; costs a few property reads on a stopped engine.
+    private func ensurePinned() {
+        guard let mic = Self.builtInMicID(), let unit = engine.inputNode.audioUnit else { return }
+        var current = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let readErr = AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                           kAudioUnitScope_Global, 0, &current, &size)
+        if readErr == noErr && current == mic { return }
+        var id = mic
+        let err = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                       kAudioUnitScope_Global, 0, &id,
+                                       UInt32(MemoryLayout<AudioDeviceID>.size))
+        if err == noErr {
+            log("capture: pin was lost (device \(current)) — re-pinned to built-in mic")
+        } else {
+            log("capture: re-pinning built-in mic failed (OSStatus \(err)) — using current input")
+        }
+    }
+
     /// Starts capture into `url`. Returns the ms spent starting the hardware.
     func start(to url: URL) throws -> Int {
         let t0 = Date()
+        ensurePinned()
         let f = try AVAudioFile(forWriting: url, settings: outFormat.settings,
                                 commonFormat: .pcmFormatInt16, interleaved: true)
         converter?.reset()
