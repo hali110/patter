@@ -30,8 +30,10 @@ s/[[:<:]][Zz] ?fail[[:>:]]/xfail/g
 s/[[:<:]]([Oo]nks|[Aa]nx|[Oo]ncs)[[:>:]]/ONNX/g
 s/[[:<:]][Rr]off[[:>:]]/ruff/g
 # Caught in real dictation (daemon.log), not synthesised.
-# "so whisperer Damien" was "so whisper daemon".
-s/[[:<:]][Dd]amien[[:>:]]/daemon/g
+# "so whisperer Damien" was "so whisper daemon"; "Even Damion or whatever's log"
+# was "even the daemon's log" — whisper picks a different name each time, so the
+# vowel is matched as a class rather than adding one rule per spelling.
+s/[[:<:]][Dd]ami[eo]n[[:>:]]/daemon/g
 s/[[:<:]][Ll]l?ama[ -]?[Cc][Pp][Pp][[:>:]]/llama.cpp/g
 s/[[:<:]][Ww]hisper[ -]?[Cc][Pp][Pp][[:>:]]/whisper.cpp/g
 # "my user-claw conventions" was "my user CLAUDE conventions". Deliberately NOT a
