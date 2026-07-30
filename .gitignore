@@ -9,6 +9,7 @@ daemon.log
 daemon.log.1
 .DS_Store
 servers.log
+servers.log.1
 .bench-tmp/
 .probe-tmp/
 .dictate-rec.wav

@@ -23,6 +23,22 @@ TAB="$(printf '\t')"
 server_up() { curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/"; }
 refine_up() { curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$REFINE_PORT/health"; }
 
+# Rotate a log at $2 bytes, keeping one previous generation. Called at start, the
+# only moment nothing is mid-write.
+#
+# LOUD ON PURPOSE. The daemon's own rotation (daemon/Core.swift) is silent and uses
+# try? on both steps, so a discarded generation — or a rotation that failed — leaves
+# no trace. This project's rule is that a failure the user never hears about is the
+# worst kind, and quietly deleting a log the user might be about to grep is that.
+rotate_log() {
+  [ -f "$1" ] || return 0
+  sz=$(wc -c < "$1" | tr -d ' ')
+  [ "$sz" -gt "$2" ] || return 0
+  [ -f "$1.1" ] && echo "  rotate: discarding $(du -h "$1.1" | cut -f1) of older history ($(basename "$1").1)"
+  mv -f "$1" "$1.1"
+  echo "  rotate: $(basename "$1") reached $((sz / 1024))KB -> $(basename "$1").1"
+}
+
 case "$1" in
 
 stop)
@@ -51,6 +67,11 @@ refine)
 start|daemon)
   pgrep -f "dictate-daemon" >/dev/null && { echo "already running (mic icon in menu bar)"; exit 0; }
   [ -x "$APP/Contents/MacOS/dictate-daemon" ] || { echo "not built — run: dictate build"; exit 1; }
+  # servers.log had no bound at all — it is a plain >> append from three places (here,
+  # the fallback loop, and the daemon's spawnServer), so it grew forever. Rotated here,
+  # before the daemon starts and spawns the servers that write to it, which is the only
+  # moment nothing holds it open. daemon.log is rotated by the daemon itself.
+  rotate_log "$SERVERLOG" 1000000
   # Via LaunchServices, not as a shell child: `open` makes the daemon its own TCC
   # responsible process, so the grants on the app apply. A terminal-spawned child is
   # attributed to the terminal instead and the grants are ignored.
