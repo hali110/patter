@@ -323,8 +323,17 @@ log)
   done
   ;;
 
+prompting)
+  # Measures whether Haider's prompting is improving, from the session logs plus
+  # daemon.log. Not a dictation feature — it is the evidence base for whether the
+  # two keys are earning their place, which is why it lives with them. Prints
+  # markdown to paste under a new dated heading in PROMPTING_LOG.md.
+  shift
+  exec /usr/bin/python3 "$DIR/prompting-stats.py" "$@"
+  ;;
+
 *)
-  echo "usage: dictate [start|stop|build|doctor|permissions|test|bench|log|refine|pull-model]"
+  echo "usage: dictate [start|stop|build|doctor|permissions|test|bench|log|refine|prompting|pull-model]"
   exit 1
   ;;
 esac
