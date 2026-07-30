@@ -209,6 +209,13 @@ Hard-won; re-deriving these costs hours.
   **Never debug this from the UI.** `AXIsProcessTrusted()` inside the daemon is the
   only ground truth, which is what `dictate doctor` reports. A whole session went
   into re-adding an app that was already authorised.
+- **Opening a Bluetooth input device freezes every other app's audio.** AirPods
+  cannot do A2DP playback and mic capture at once: opening their mic forces a
+  profile renegotiation, and releasing it at key-up forces another — each stalls
+  all system audio for ~1s. Capture is therefore pinned to the built-in mic
+  (`Recorder.pinToBuiltInMic()`, `kAudioOutputUnitProperty_CurrentDevice`), never
+  the system default input. Bonus: the built-in array mic beats any Bluetooth
+  headset mic for transcription.
 - **Ad-hoc signing (`codesign -s -`) is why grants die on every rebuild.** TCC keys
   an app on its designated requirement; with no signing identity it falls back to
   the `cdhash`, which changes whenever the binary does, so macOS treats each build

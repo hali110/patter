@@ -2,6 +2,7 @@
 //
 //   right ⌥  record → whisper → paste verbatim          (~400ms)
 //   right ⌘  record → whisper → local LLM → paste       (~1.5–3s, restructured)
+//   right ⌃  tap — delete the last paste (until you type, click, or dictate again)
 //
 // The two are separate keys rather than one key plus a setting so that the fast
 // path stays provably untouched: dictating a commit message or a command must
@@ -45,6 +46,16 @@ final class Dictator: NSObject {
     private var seq = 0
     private var startedAt = Date()
     private var wavURL = URL(fileURLWithPath: "/dev/null")
+    // Undo state, main thread only. `lastPaste` is deletable via a right-⌃ tap only
+    // while the caret provably hasn't moved: any real keystroke, click, or newer
+    // paste clears it, so the backspaces can never eat text the user typed.
+    private var lastPaste: String?
+    private var undoArmed = false
+    private static let rightCtrlKeycode: Int64 = 62
+    private static let rightCtrlFlagBit: UInt64 = 0x2000  // NX_DEVICERCTLKEYMASK
+    // Stamped on every event this daemon posts, so its own tap can tell its
+    // synthetic ⌘V/backspaces from the user's real keys.
+    private static let syntheticTag: Int64 = 0xD1C7
 
     func setup() {
         NSApp.setActivationPolicy(.accessory)
@@ -52,7 +63,8 @@ final class Dictator: NSObject {
         icon("mic")
 
         let menu = NSMenu()
-        for line in ["hold right ⌥ — dictate verbatim", "hold right ⌘ — dictate, AI-restructured"] {
+        for line in ["hold right ⌥ — dictate verbatim", "hold right ⌘ — dictate, AI-restructured",
+                     "tap right ⌃ — delete last dictation"] {
             let info = NSMenuItem(title: line, action: nil, keyEquivalent: "")
             info.isEnabled = false
             menu.addItem(info)
@@ -163,8 +175,13 @@ final class Dictator: NSObject {
         // every shortcut on the system, so "held ⌘, then pressed S" must not paste a
         // fragment into the document that just saved. Nothing about the key is read
         // beyond the fact that one arrived, and the tap is listenOnly.
+        // Mouse downs are watched for one reason: a click moves the caret, which
+        // invalidates the pending right-⌃ undo (backspacing would eat the wrong text).
         let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
             | CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+            | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.tapDisabledByTimeout.rawValue)
             | CGEventMask(1 << CGEventType.tapDisabledByUserInput.rawValue)
         guard let tap = CGEvent.tapCreate(
@@ -196,22 +213,85 @@ final class Dictator: NSObject {
             if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             return
         }
+        // The daemon's own synthetic ⌘V/backspaces come back through this tap;
+        // reacting to them would self-cancel a take started mid-paste, or kill the
+        // undo the paste just armed.
+        if event.getIntegerValueField(.eventSourceUserData) == Self.syntheticTag { return }
+
         // A real keystroke during a take means the hold was the start of a shortcut,
         // not dictation. Discard rather than paste a fragment into the focused app.
+        // It also means the caret may have moved, so the pending undo dies with it.
         if type == .keyDown {
-            DispatchQueue.main.async { self.cancelRec() }
+            DispatchQueue.main.async { self.cancelRec(); self.invalidateUndo() }
+            return
+        }
+        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            DispatchQueue.main.async { self.invalidateUndo() }
             return
         }
 
         let code = event.getIntegerValueField(.keyboardEventKeycode)
+        if code == Self.rightCtrlKeycode {
+            let down = event.flags.rawValue & Self.rightCtrlFlagBit != 0
+            DispatchQueue.main.async { down ? self.armUndo() : self.fireUndo() }
+            return
+        }
         guard let mode: Mode = (code == Mode.raw.keycode) ? .raw
-                             : (code == Mode.refine.keycode) ? .refine : nil else { return }
+                             : (code == Mode.refine.keycode) ? .refine : nil else {
+            // Any other modifier while right ⌃ is down means a chord (⌃⇧-click and
+            // friends), not the undo tap.
+            DispatchQueue.main.async { self.undoArmed = false }
+            return
+        }
         let down = event.flags.rawValue & mode.flagBit != 0
         DispatchQueue.main.async { down ? self.startRec(mode) : self.stopRec(mode) }
     }
 
+    /// Right ⌃ went down with something deletable pending. Anything that happens
+    /// before its release — a key, a click, another modifier — disarms it.
+    private func armUndo() {
+        undoArmed = lastPaste != nil
+    }
+
+    private func invalidateUndo() {
+        lastPaste = nil
+        undoArmed = false
+    }
+
+    /// Right ⌃ released as a clean tap: erase the last paste with one backspace per
+    /// character. Deterministic everywhere — terminals included — unlike ⌘Z, whose
+    /// undo grouping is app-dependent.
+    private func fireUndo() {
+        guard undoArmed else { return }
+        undoArmed = false
+        guard let text = lastPaste else { return }
+        lastPaste = nil
+        guard AXIsProcessTrusted() else {
+            log("undo blocked (no accessibility) — nothing deleted")
+            return
+        }
+        let t0 = Date()
+        let src = CGEventSource(stateID: .combinedSessionState)
+        for _ in 0..<text.count { postKey(51, source: src) }  // 51 = delete
+        log("undo: erased last paste (\(text.count) chars, \(ms(t0))ms)")
+    }
+
+    /// Posts one full press of `key`, tagged so this daemon's tap ignores it.
+    private func postKey(_ key: CGKeyCode, flags: CGEventFlags = [], source: CGEventSource?) {
+        for down in [true, false] {
+            guard let e = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else {
+                log("postKey: CGEvent creation failed for keycode \(key)")
+                return
+            }
+            e.flags = flags
+            e.setIntegerValueField(.eventSourceUserData, value: Self.syntheticTag)
+            e.post(tap: .cghidEventTap)
+        }
+    }
+
     private func startRec(_ mode: Mode) {
         guard recordingMode == nil else { return }  // the other hotkey already owns this take
+        undoArmed = false  // a dictation hold during a right-⌃ hold is a chord, not a tap
         seq += 1
         wavURL = URL(fileURLWithPath: NSTemporaryDirectory() + "dictate-\(seq).wav")
         do {
@@ -323,12 +403,8 @@ final class Dictator: NSObject {
             return
         }
         let src = CGEventSource(stateID: .combinedSessionState)
-        let down = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)   // V
-        down?.flags = .maskCommand
-        let up = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
-        up?.flags = .maskCommand
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        postKey(9, flags: .maskCommand, source: src)  // 9 = V
+        lastPaste = text
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             // Only restore if nothing else claimed the pasteboard meanwhile — otherwise

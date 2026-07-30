@@ -5,6 +5,7 @@
 // press-and-speak user loses their first syllable. AVAudioEngine costs ~100ms.
 // See CLAUDE.md's latency budget; verify with tests/capture-probe.swift.
 import AVFoundation
+import AudioToolbox
 
 final class Recorder {
     private let engine = AVAudioEngine()
@@ -23,6 +24,7 @@ final class Recorder {
     /// Allocates engine resources up front so key-down only pays for the hardware start.
     @discardableResult
     func prepare() -> Bool {
+        pinToBuiltInMic()
         let native = engine.inputNode.inputFormat(forBus: 0)
         guard native.sampleRate > 0 else {
             log("capture: no input device (format 0 Hz) — check Microphone permission")
@@ -54,6 +56,60 @@ final class Recorder {
             }
         }
         return true
+    }
+
+    /// Captures from the built-in mic, never the system default. When the default
+    /// input is Bluetooth (AirPods), opening its mic forces the headset out of its
+    /// music-only profile and every stop() forces it back — freezing all other audio
+    /// for ~1s on each transition. Falls back to the default input on machines with
+    /// no built-in mic.
+    private func pinToBuiltInMic() {
+        guard let mic = Self.builtInMicID() else {
+            log("capture: no built-in mic found — using system default input")
+            return
+        }
+        guard let unit = engine.inputNode.audioUnit else {
+            log("capture: input node has no audio unit — using system default input")
+            return
+        }
+        var id = mic
+        let err = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                       kAudioUnitScope_Global, 0, &id,
+                                       UInt32(MemoryLayout<AudioDeviceID>.size))
+        if err == noErr {
+            log("capture: pinned to built-in mic")
+        } else {
+            log("capture: pinning built-in mic failed (OSStatus \(err)) — using system default input")
+        }
+    }
+
+    private static func builtInMicID() -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
+                                              mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr,
+              size > 0 else { return nil }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr
+        else { return nil }
+
+        for id in ids {
+            var transport: UInt32 = 0
+            var tSize = UInt32(MemoryLayout<UInt32>.size)
+            var tAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
+                                                   mScope: kAudioObjectPropertyScopeGlobal,
+                                                   mElement: kAudioObjectPropertyElementMain)
+            guard AudioObjectGetPropertyData(id, &tAddr, 0, nil, &tSize, &transport) == noErr,
+                  transport == kAudioDeviceTransportTypeBuiltIn else { continue }
+            var sAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
+                                                   mScope: kAudioObjectPropertyScopeInput,
+                                                   mElement: kAudioObjectPropertyElementMain)
+            var sSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &sAddr, 0, nil, &sSize) == noErr, sSize > 0 else { continue }
+            return id
+        }
+        return nil
     }
 
     /// Starts capture into `url`. Returns the ms spent starting the hardware.
