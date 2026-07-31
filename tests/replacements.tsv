@@ -71,3 +71,13 @@ Both april tags are visible	Both AprilTags are visible
 Ship it in April and tag the release	Ship it in April and tag the release
 # Whitespace normalisation.
   padded   text  	padded text
+# Whisper spells the initialism differently every time it fails on it; only "JGPD"
+# was seen in real use (daemon.log 2026-07-31), the rest are the same letter classes.
+better results from Cloud or JGPD	better results from Cloud or ChatGPT
+I asked JGPT about it	I asked ChatGPT about it
+paste it into chat GPD	paste it into ChatGPT
+paste it into chad GBT	paste it into ChatGPT
+# Negative cases: the tail is what makes the rule safe. "Chad" and "chat" alone must
+# survive, and so must the real English word "cloud" — Claude is glossary-only.
+Chad opened a chat about it	Chad opened a chat about it
+we never send audio to the cloud	we never send audio to the cloud

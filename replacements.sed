@@ -57,3 +57,15 @@ s/[[:<:]]([Gg]et|[Gg]it),? poll[[:>:]]/git pull/g
 # because "April tag" is two real words that do not form a real phrase — unlike
 # mypy→"might be", which is a phrase and therefore glossary-only.
 s/[[:<:]][Aa]pril ?[Tt]ag(s?)[[:>:]]/AprilTag\1/g
+# "better results from Cloud or JGPD" — caught in daemon.log 2026-07-31. Only the
+# JGPD form was actually observed; the letters are matched as classes because whisper
+# picks a different spelling every time it fails on an initialism (the same reason the
+# daemon rule matches [Dd]ami[eo]n). Safe to rewrite because no English word has the
+# shape J-G-P/B-D/T, and the chat/chad forms require the GPD/GBT tail, so the name
+# "Chad" and the verb "chat" both survive on their own.
+s/[[:<:]][Jj][ -]?[Gg][ -]?[PpBb][ -]?[DdTt][[:>:]]/ChatGPT/g
+s/[[:<:]][Cc]ha[td] ?[Gg][ -]?[PpBb][ -]?[DdTt][[:>:]]/ChatGPT/g
+# Claude is deliberately NOT here. It is heard as "Cloud", which is real English this
+# project's own documentation uses ("no cloud STT", "no cloud sync"), so any anchored
+# rule would corrupt them. It lives in the last glossary slot instead — the exact
+# split CLAUDE.md describes, and the same call already made for claw→Claude.
