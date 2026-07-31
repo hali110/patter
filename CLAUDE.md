@@ -39,7 +39,7 @@ Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
 | Capture onset loss | ≤150 ms | 63–150 ms | CoreAudio device start. Audio before this is gone. |
 | Capture tail loss | ≤25 ms | ~21 ms | One 1024-frame tap buffer, in flight at key release. |
 | Release → paste | ≤600 ms | 393–561 ms in real use | Dominated by one fixed 30s encoder window. 22s of speech costs 561 ms. |
-| Refine (right ⌘ only) | ≤2000 ms | 480–**2175 ms** | Local 7B on Metal. Scales with **output** length, unlike whisper. Off the right-⌥ path entirely. Top of range **breaches budget** on one 138-word take (1924/2175 ms across two runs), accepted knowingly when `refine.txt` was rewritten to stop dropping context — see the log. Median take ~1200 ms. |
+| Refine (right ⌘ only) | ≤2000 ms | 480–**5735 ms** | Local 7B on Metal. Scales with **output** length, unlike whisper. Off the right-⌥ path entirely. **The ≤2000 ms figure was calibrated on ≤138-word takes and does not survive long-form use**: on 2026-07-31 a 398-word / 123.7 s take cost 5735 ms refine and 8850 ms end-to-end, and 4 of that day's 5 takes breached total budget. Nothing regressed — generation is autoregressive, so a two-minute utterance is intrinsically a multi-second stage and no tuning changes that. Either scope a separate long-take budget or gate ⌘ by duration; see DICTATE_TODO item 28. Median short take ~1200 ms. |
 | Paste | ≤10 ms | 0–7 ms | Pasteboard write + synthetic ⌘V. |
 | `sh` + `curl` overhead | ~25 ms | 25 ms | Price of invariant 3. Deliberate. Do not "optimize" it. |
 | Cold model load | ~10 s | — | Once, at `dictate start`. Never on the hot path. |
@@ -236,10 +236,21 @@ Hard-won; re-deriving these costs hours.
 
 ## Testing
 
-`dictate test` runs `tests/replacements.tsv` through `transcribe.sh` using
-`say`-synthesized audio. It covers the text pipeline (jargon bias + replacements),
-which is where regressions actually happen. Real-mic accuracy cannot be tested
-here and is validated by use.
+`dictate test` runs `tests/replacements.tsv` through **`clean.sh` directly** — text
+in, text out, no audio and no model. That makes it fast and perfectly deterministic,
+but it is worth being precise about what it therefore does *not* cover: it tests
+`replacements.sed` only. **Glossary bias is not exercised by it at all**, because
+nothing is ever transcribed; `tests/glossary-probe.sh` is the `say`-synthesized probe
+that does that, and it is the one to reach for after reordering `jargon.txt`.
+
+`dictate refine-test` runs `tests/refine.tsv` through `refine.sh` against the live
+7B, plus four short-input passthrough assertions. It **carries two deliberate red
+cases** and is expected to report `10 passed, 2 failed`; both are regression markers
+for known model defects, documented in DICTATE_TODO items 16a and 29. Do not delete
+them to get a green suite. It exports `DICTATE_REFINE_TEST=1` so its cases are kept
+out of `takes/` — a synthetic pair in the eval corpus is worse than no pair.
+
+Real-mic accuracy cannot be tested here and is validated by use.
 
 `dictate bench` prints the per-stage latency table above. Numbers in this file
 came from it; update them here when they move.
