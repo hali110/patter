@@ -333,7 +333,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
         if seconds < Self.minSeconds || take.peak < Self.minPeak {
             let why = seconds < Self.minSeconds ? "too short" : "silent"
-            log("[\(n)] dropped (\(why)): \(String(format: "%.2f", seconds))s peak=\(String(format: "%.4f", take.peak))")
+            log("[\(n)] dropped (\(why)): \(String(format: "%.2f", seconds))s \(take.levels)")
             try? FileManager.default.removeItem(at: url)
             if inFlight == 0 { icon("mic") }
             return
@@ -364,7 +364,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
             DispatchQueue.main.async {
                 var pasteMs = 0
                 if txt.isEmpty {
-                    log("[\(n)] EMPTY transcript for \(String(format: "%.1f", seconds))s of audio at peak \(String(format: "%.3f", take.peak))")
+                    log("[\(n)] EMPTY transcript for \(String(format: "%.1f", seconds))s of audio at \(take.levels)")
                 } else {
                     let t1 = Date()
                     self.paste(txt + " ")  // trailing space so back-to-back utterances don't fuse
@@ -372,7 +372,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
                 }
                 self.inFlight -= 1
                 if self.inFlight == 0 && self.recordingMode == nil { self.icon("mic") }
-                log("[\(n)] \(mode.label) audio=\(String(format: "%.1f", seconds))s peak=\(String(format: "%.3f", take.peak)) "
+                log("[\(n)] \(mode.label) audio=\(String(format: "%.1f", seconds))s \(take.levels) "
                     + "transcribe=\(transcribeMs)ms \(mode == .refine ? "refine=\(refineMs)ms " : "")"
                     + "paste=\(pasteMs)ms total=\(ms(released))ms "
                     + "· \(txt.isEmpty ? "(empty)" : txt)")

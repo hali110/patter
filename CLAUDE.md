@@ -116,6 +116,17 @@ Facts that constrain the design, established by measurement:
   from no-signal. Margin over the floor is ~2.2x at 50% system input volume;
   raising input volume widens it (speech at 0.03 peak uses ~10 of 16 bits). Every
   take logs its peak — tune from the log, never from a guess.
+- **`peak` cannot see how noisy the room is, so every take also logs `floor` and
+  `snr`.** The loudest sample in a take is always the speaker's voice; doubling the
+  background moves `peak` by roughly nothing. Measured on one bad day: peak held
+  flat at 0.095 (against 0.105/0.082 on the two days before) while the 10th-percentile
+  20ms window — the gaps between words, i.e. the room — went 0.0023 → 0.0035 and
+  median SNR fell 17.3 → 15.9 dB, with sub-12dB takes going 11% → 25%. Speech RMS
+  *rose*, so it was noise and not distance. Two takes came back as `*sad*`, whisper's
+  sound-tag hallucination on noise, and one was pasted; it cleared the amplitude gate
+  at peak 0.035 because the **noise itself** was loud enough to pass as signal — the
+  documented limit of an absolute floor, reached in practice. Both percentiles come
+  from the sample loop that already runs for peak, so they are free.
 
 ## Rules
 

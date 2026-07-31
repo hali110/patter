@@ -17,9 +17,30 @@ final class Recorder {
     private var writeFailureLogged = false
     private var observing = false
     private var peak: Float = 0
+    private var windowRMS: [Float] = []
 
-    /// What a finished recording amounted to. `peak` is 0…1 full scale.
-    struct Take { let seconds: Double; let peak: Float }
+    /// What a finished recording amounted to. All levels are 0…1 full scale.
+    ///
+    /// `peak` is the loudest single sample, which is always the speaker's voice — so
+    /// it is blind to how noisy the room is. A doubling of background noise moves it
+    /// by roughly nothing. `floor` is what moves: the quiet between words.
+    struct Take {
+        let seconds: Double
+        let peak: Float
+        /// 10th-percentile 21ms window — the room. ~0.0001 in a quiet room,
+        /// 0.008–0.012 standing next to running machinery.
+        let floor: Float
+        /// 90th-percentile 21ms window — the voice.
+        let speech: Float
+        /// dB of voice over room. Whisper starts inventing sound tags below ~10.
+        var snr: Float { floor > 0 && speech > 0 ? 20 * log10(speech / floor) : 0 }
+
+        /// The level triplet, rendered once so that every exit path in `stopRec`
+        /// prints the identical shape and `grep snr=` sees a take whether it was
+        /// pasted, dropped or came back empty. One decimal on dB because the trend
+        /// being watched for is ~1dB of drift in a median, which %.0f would hide.
+        var levels: String { String(format: "peak=%.3f floor=%.4f snr=%.1fdB", peak, floor, snr) }
+    }
 
     /// Allocates engine resources up front so key-down only pays for the hardware start.
     @discardableResult
@@ -145,7 +166,7 @@ final class Recorder {
                                 commonFormat: .pcmFormatInt16, interleaved: true)
         converter?.reset()
         writeFailureLogged = false
-        lock.lock(); file = f; peak = 0; lock.unlock()
+        lock.lock(); file = f; peak = 0; windowRMS.removeAll(keepingCapacity: true); lock.unlock()
         try engine.start()
         return ms(t0)
     }
@@ -154,10 +175,21 @@ final class Recorder {
     func stop() -> Take {
         engine.stop()
         lock.lock()
-        let take = Take(seconds: Double(file?.length ?? 0) / outFormat.sampleRate, peak: peak)
+        let (floor, speech) = levels()
+        let take = Take(seconds: Double(file?.length ?? 0) / outFormat.sampleRate,
+                        peak: peak, floor: floor, speech: speech)
         file = nil   // closes the file; a tap callback blocked on the lock sees nil and returns
         lock.unlock()
         return take
+    }
+
+    /// Room and voice levels, as the 10th and 90th percentile window. One sort of
+    /// ~1400 floats for a 30s take — microseconds, and it happens after the engine
+    /// has stopped, so it is off the tail-loss path. Caller holds `lock`.
+    private func levels() -> (floor: Float, speech: Float) {
+        guard !windowRMS.isEmpty else { return (0, 0) }
+        let s = windowRMS.sorted()
+        return (s[s.count / 10], s[s.count * 9 / 10])
     }
 
     private func append(_ buf: AVAudioPCMBuffer) {
@@ -182,14 +214,18 @@ final class Recorder {
         }
         guard out.frameLength > 0 else { return }
 
-        // Peak level, tracked here because we already touch every sample. Whisper
+        // Levels, tracked here because we already touch every sample. Whisper
         // hallucinates fluent sentences out of silence, so the caller needs a way to
-        // tell "nothing was said" from "something was said" before it pastes.
+        // tell "nothing was said" from "something was said" before it pastes. The
+        // buffer is ~21ms at 16kHz, which is the window the RMS percentiles use.
         if let ch = out.int16ChannelData?[0] {
+            var sumsq: Float = 0
             for i in 0..<Int(out.frameLength) {
                 let a = Float(abs(Int32(ch[i]))) / 32768
                 if a > peak { peak = a }
+                sumsq += a * a
             }
+            windowRMS.append((sumsq / Float(out.frameLength)).squareRoot())
         }
 
         do { try file.write(from: out) } catch {
