@@ -238,6 +238,11 @@ test)
 
 refine-test)
   refine_up || { echo "llama-server not running — dictate start (or: dictate pull-model)"; exit 1; }
+  # Keep synthetic cases out of the eval corpus. This suite calls refine.sh directly,
+  # so with retention on it used to write one takes/*.pair.txt per case, named exactly
+  # like a field take — which is how 7 test cases spent two days being counted as real
+  # examples in DICTATE_TODO item 15.
+  DICTATE_REFINE_TEST=1; export DICTATE_REFINE_TEST
   pass=0; fail=0
   # The passthrough floor is the safety property, so it is asserted first and by
   # identity: below the floor the text must come back byte-for-byte, because an LLM

@@ -40,18 +40,37 @@ command -v jq >/dev/null || passthrough "jq not found"
 curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/health" \
   || passthrough "llama-server not up on :$PORT (start it with: dictate start)"
 
-body=$(jq -n --rawfile sys "$DIR/refine.txt" --arg usr "$raw" '{
+MAX_TOKENS=512
+body=$(jq -n --rawfile sys "$DIR/refine.txt" --arg usr "$raw" --argjson max "$MAX_TOKENS" '{
   messages: [ {role:"system", content:$sys}, {role:"user", content:$usr} ],
   temperature: 0,
   top_p: 1,
   seed: 0,
-  max_tokens: 512,
+  max_tokens: $max,
   cache_prompt: true
 }') || passthrough "failed to build request"
 
 resp=$(curl -s --max-time 30 "http://127.0.0.1:$PORT/v1/chat/completions" \
   -H 'Content-Type: application/json' -d "$body") \
   || passthrough "llama-server request failed"
+
+# A capped generation is the ONE failure this script cannot see by looking at its
+# output: the server returns HTTP 200 and a complete-LOOKING string, so every check
+# below passes and the daemon pastes a sentence cut mid-word, with nothing in the log.
+# That is the "silently ate a sentence" bug CLAUDE.md calls the worst one here, and
+# it arrived by exactly the route that bug always takes — the cap was set when takes
+# were ~20s, then a 123.7s / 398-word take on 2026-07-31 used 335 of 512 and nobody
+# had looked at the field that says so. Reproduced by forcing the cap down on that
+# take's real input: finish_reason=length, output ending "...don't care about the
+# results. They".
+#
+# Deliberately passthrough rather than raise MAX_TOKENS. Raising it moves the cliff
+# without removing it, and generation is autoregressive so a bigger cap is also a
+# longer worst case; the check is what makes the cliff impossible. Raising it as well
+# is a latency decision, and it belongs with the long-take budget question, not here.
+fin=$(printf '%s' "$resp" | jq -r '.choices[0].finish_reason // "absent"')
+[ "$fin" != "length" ] \
+  || passthrough "model hit the ${MAX_TOKENS}-token cap (finish_reason=length) — refusing to paste a truncated refinement"
 
 out=$(printf '%s' "$resp" | jq -r '.choices[0].message.content // empty') \
   || passthrough "unparseable response"
@@ -82,7 +101,15 @@ out=$(printf '%s' "$out" \
 #
 # Only reached when the model actually ran: every passthrough() exits before this, and
 # a passthrough has no pair to record.
-if [ -f "$DIR/takes/.enabled" ]; then
+#
+# DICTATE_REFINE_TEST excludes the test suite, which calls this script directly and
+# would otherwise write one pair per case into the corpus under the same filename
+# shape as a field take. That is not hypothetical: 7 of the 12 pairs on disk at
+# 2026-07-31 were `tests/refine.tsv` cases from a single 3-second run on 07-30, and
+# they were mistaken for field takes for two days — the corpus read as 12 examples
+# when it held 5. A synthetic pair is worse than no pair here, because the whole point
+# of the corpus is to measure the model against speech nobody wrote for it.
+if [ -f "$DIR/takes/.enabled" ] && [ -z "$DICTATE_REFINE_TEST" ]; then
   { printf '=== raw ===\n%s\n=== refined ===\n%s\n' "$raw" "$out"; } \
     > "$DIR/takes/$(date +%Y%m%d-%H%M%S)-$$.pair.txt" \
     || echo "refine: could not retain pair" >&2
