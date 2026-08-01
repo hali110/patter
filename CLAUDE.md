@@ -69,6 +69,38 @@ Facts that constrain the design, established by measurement:
   mishear collides with real English belongs in the glossary and nowhere else:
   `mypy` is heard as "might be", which no anchored rule can fix without
   corrupting the phrase.
+- **That split has a third case, and `Claude` is it: use both.** The rule above
+  reads as a binary and is not one. `Claude` is heard as "cloud", which *is* real
+  English — this file uses it twice — so the binary says glossary-only. But
+  measured on real audio, **the glossary slot alone fixes it 1 take in 3**
+  (re-transcribed the three real wavs with `Claude` in the last slot; two still
+  said "Cloud"), because the two words are near-homophones and bias is
+  probabilistic. Meanwhile the corpus says the risk is theoretical: **"cloud"
+  occurs 10 times in 612 takes and is `Claude` 10 out of 10.** The resolution is
+  the precedent the git rules already set — list only the forms whose literal
+  reading is *not* real English (`tell cloud`, `talking to cloud`, `cloud or
+  ChatGPT`) and leave the rest. No bare rule, and deliberately **no ask-form**:
+  "ask the cloud provider" is a sentence a person says, exactly like the
+  `get status` / `get log` forms omitted from the git rules. So: glossary for the
+  probabilistic lift, narrow anchored sed for the cases it misses, and the
+  ambiguous middle left alone on purpose.
+- **A term whisper gets right under `say` may still be wrong in real speech.**
+  `tests/glossary-probe.sh` synthesizes its audio, and `say` enunciates — it
+  returns `Claude` correctly with *no prompt at all*, which would have argued the
+  slot is unearned under the "verified-unaided terms are deliberately absent"
+  rule. Real audio says the opposite. **The probe can prove a term is biased for;
+  it cannot prove one is unnecessary.** Only the corpus can do that.
+- **Whitespace normalisation must run BEFORE `replacements.sed`, not after.**
+  `whisper-server` emits one line per segment, each carrying its own leading
+  space, so joining them leaves a **double space wherever whisper broke a line** —
+  and every multi-word rule in the file matches a single one. `talking to  Cloud`,
+  `get  pull`, `april  tags` and `ross  bag` all passed through untouched while
+  the identical single-spaced text was rewritten. It went unnoticed because every
+  case in `replacements.tsv` was hand-typed with single spaces: **the test suite
+  and the bug shared an assumption**, so 77 green tests could not see it. Found
+  only by running two real takes of the same sentence and getting two different
+  answers. `tests/replacements.tsv` now carries four double-spaced cases; they are
+  the only ones that exercise the segment join, so do not "tidy" them.
 - **The model is resident and GPU-backed.** `whisper-server` holds ~2GB and runs
   on the Metal backend with flash attention. If a transcript takes 10s, the
   server died and `transcribe.sh` silently fell back to `whisper-cli` — check the
@@ -88,6 +120,26 @@ Facts that constrain the design, established by measurement:
   glossary gives it fluent context to continue from, so it stops hedging on empty
   input. Since this app types into whatever document is focused, that is the worst
   failure it has.
+- **The prompt controls whether disfluencies survive, and the clean glossary is
+  what deletes them.** Same mechanism as the two facts above, third consequence.
+  It was long assumed whisper strips "um"/"uh" by rule — 212 real transcripts
+  contained zero. It does not. Measured over **30 real takes** from `takes/`:
+  disfluency tokens went **1 with the current glossary prompt → 4 with a disfluent
+  prompt → 5 with glossary + disfluent tail**. Inspected rather than counted, and
+  the recovered text is real, not hallucinated: `placed in each, um, each bag`
+  (a repetition the clean prompt smoothed away) and — the important one —
+  **`if it gets us within the placement, er, the pickup`, a genuine self-correction
+  that the clean prompt silently repaired into "within the pickup"**. So the clean
+  prose of `jargon.txt` is not just dropping filler, it is **erasing false starts
+  and corrections**, which for dictation is a feature and for any analysis of how
+  someone actually spoke is destruction of the signal. The recovery is partial —
+  5 tokens across 30 takes is still far below real speech — so acoustics are
+  likely a second cause; do not claim the prompt explains all of it. Crucially,
+  **appending a disfluent tail costs the jargon bias nothing** (`Wattson` and
+  `Tyler 01` survive in every ordering, probe check F), so the two are separable.
+  **This must never ship on the right-⌥ hot path** — it would paste "um, er" into
+  the focused document. It belongs in a second, offline pass over `takes/`, which
+  is exactly where SPEECH's off-the-hot-path constraint already puts it.
 - **The gate must run before whisper, on amplitude.** Both model-side signals were
   measured and are unusable: `no_speech_prob` returns 3.6e-10 (i.e. "definitely
   speech") on pure silence, and `avg_logprob` scores silence *more* confident than
@@ -135,6 +187,18 @@ failure gets a `log()` line naming the stage. A dropped utterance the user never
 hears about is the worst possible bug in a dictation tool — it looks like the app
 worked and it silently ate a sentence.
 
+**And check the metadata, not just the payload.** The corollary, learned the
+expensive way. `refine.sh` had nine `passthrough()` paths, each naming its stage —
+and still pasted truncated text for weeks, because a generation that hits
+`max_tokens` returns **HTTP 200 with a syntactically perfect string**. Every check
+passed: non-empty, parseable, unfenced, unquoted. The damage was declared in
+`finish_reason`, a sibling field nothing read. **Defensive code that only inspects
+its own output cannot see a failure the payload does not carry.** Whenever a stage
+consumes a response, ask what the *envelope* says happened, not just whether the
+body looks fine. Same shape as the amplitude gate: whisper's own confidence scores
+call silence "definitely speech", so the check that works lives outside the thing
+being checked.
+
 **Log timings, not events.** Every utterance emits one line with per-stage ms.
 `daemon.log` is the only debugging surface a GUI daemon has; treat it as the
 product's black box, and keep it greppable and bounded.
@@ -163,6 +227,19 @@ untouched and never reaches the model.
 - **Model** is `models/refine-q4.gguf` (Qwen2.5-7B-Instruct Q4_K_M, 4.4GB), resident
   on `127.0.0.1:8091` with `-ngl 99`. `dictate pull-model` fetches it. Absent, the
   daemon runs normally and right ⌘ pastes raw — never a hard failure.
+- **A capped generation is a failure and must passthrough.** `refine.sh` sends
+  `max_tokens: 512` and **reads `finish_reason`**; `"length"` routes to
+  `passthrough()` like any other error. This is not optional politeness — without
+  it a long take is cut mid-word and pasted into the focused document with nothing
+  in the log, which is the silently-ate-a-sentence bug (see "check the metadata"
+  under Rules). Measured: a 398-word take used **335 of 512**, so it was ~1.5x from
+  firing in normal use. **Do not "fix" a future recurrence by raising the cap** —
+  that moves the cliff instead of removing it, and since generation is
+  autoregressive a bigger cap is also a longer worst case. The check is what makes
+  the cliff impossible; the number is then just a number. Accepted consequence:
+  above roughly 400 words ⌘ now degrades to plain dictation rather than corrupting
+  it, which is the correct direction and the signal that the long-take budget
+  question needs settling.
 - **`refine.sh` never fails closed.** Every error path prints its input unchanged
   and explains on stderr. A refine that silently ate a sentence would be strictly
   worse than not having the feature.
@@ -244,16 +321,45 @@ nothing is ever transcribed; `tests/glossary-probe.sh` is the `say`-synthesized 
 that does that, and it is the one to reach for after reordering `jargon.txt`.
 
 `dictate refine-test` runs `tests/refine.tsv` through `refine.sh` against the live
-7B, plus four short-input passthrough assertions. It **carries two deliberate red
-cases** and is expected to report `10 passed, 2 failed`; both are regression markers
-for known model defects, documented in DICTATE_TODO items 16a and 29. Do not delete
-them to get a green suite. It exports `DICTATE_REFINE_TEST=1` so its cases are kept
-out of `takes/` — a synthetic pair in the eval corpus is worse than no pair.
+7B, plus four short-input passthrough assertions. It **carries exactly two deliberate
+red cases** and is expected to report `13 passed, 2 failed`; both reds are regression
+markers for known model defects, documented in DICTATE_TODO items 16a and 29. Do not
+delete them to get a green suite, and keep the expected count here current — stating
+it is what stops a *third* red hiding among the two. It exports
+`DICTATE_REFINE_TEST=1` so its cases are kept out of `takes/` — a synthetic pair in
+the eval corpus is worse than no pair.
 
-Real-mic accuracy cannot be tested here and is validated by use.
+Three of the green cases are **real field pairs that used to fail**: the old prompt
+dropped a person's name ("For Alex"), fabricated `Fix the job selection…` out of a
+pure status report, and converted two questions into imperatives. They lock in a
+measured fix rather than marking a defect, and they are the reason `refine.txt` rules
+3, 4 and 5 are worded the way they are.
+
+`tests/glossary-probe.sh` is the only test that touches whisper. It guards the
+recency rule with `say`-synthesized audio and must print **all 6 as expected**.
+Run it after **any** edit to `jargon.txt`'s length or ordering — not just additions,
+since a reorder is what silently killed `Wattson` and `pixi` before. Checks B and C
+must always disagree; that disagreement *is* the recency finding.
+
+Real-mic accuracy cannot be tested here and is validated by use. See the note above
+on `say`: the probe can prove a term is biased for, never that one is unnecessary.
 
 `dictate bench` prints the per-stage latency table above. Numbers in this file
 came from it; update them here when they move.
+
+**`takes/` is a corpus, not an output directory, and it has one rule: everything in
+`*.pair.txt` must be speech nobody wrote for the model.** Opt-in via `dictate takes`,
+never auto-deleted, gitignored and blocked by `.githooks/pre-commit`. It is the only
+thing that makes a `refine.txt` or model change measurable, and it has now been
+damaged twice by mechanisms nobody had looked at — `daemon.log` rotation silently
+destroying the pairs it was assumed to store, and the test suite writing its own
+cases in under field-take filenames. Both times the data looked fine until it was
+counted. Naming carries the provenance so a third case is visible: `*.pair.txt` is
+field data, `*.synthetic-pair.txt` is excluded, `*-backfillUTC.pair.txt` is
+reconstructed from `daemon.log` and is therefore **UTC-stamped where live pairs are
+local** — do not join the two on time without accounting for it. General rule worth
+keeping: a dataset whose durability is a *side effect* of some other component's
+behaviour has no durability guarantee at all.
 
 ## Deliberately not doing
 
