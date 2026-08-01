@@ -65,7 +65,24 @@ s/[[:<:]][Aa]pril ?[Tt]ag(s?)[[:>:]]/AprilTag\1/g
 # "Chad" and the verb "chat" both survive on their own.
 s/[[:<:]][Jj][ -]?[Gg][ -]?[PpBb][ -]?[DdTt][[:>:]]/ChatGPT/g
 s/[[:<:]][Cc]ha[td] ?[Gg][ -]?[PpBb][ -]?[DdTt][[:>:]]/ChatGPT/g
-# Claude is deliberately NOT here. It is heard as "Cloud", which is real English this
-# project's own documentation uses ("no cloud STT", "no cloud sync"), so any anchored
-# rule would corrupt them. It lives in the last glossary slot instead — the exact
-# split CLAUDE.md describes, and the same call already made for claw→Claude.
+# Claude gets NARROW anchored rules and deliberately not a bare cloud→Claude one.
+# Measured over the 612-take corpus on 2026-08-01: "cloud" occurs 10 times and is
+# "Claude" 10 out of 10 — Haider has never once dictated the weather/hosting sense.
+# But the glossary slot alone only fixes it 1 take in 3 (re-transcribed the three real
+# wavs with Claude in the last slot), because "Claude" and "cloud" are near-homophones
+# and bias is probabilistic where sed is not. So the glossary-only call recorded here
+# on 07-31 was right about the risk and wrong about the sufficiency.
+#
+# The resolution is the precedent this file already set for git: list only the forms
+# whose "cloud" reading is NOT real English, and leave the rest alone. You do not tell
+# or talk to a cloud, and "cloud or ChatGPT" is unambiguous. Deliberately ABSENT, and
+# do not add them: a bare rule (would corrupt this repo's own "no cloud STT"), and any
+# ask-form — "ask the cloud provider" is a sentence a person says, exactly like the
+# "get status" / "get log" forms omitted from the git rules below.
+s/[[:<:]]([Tt]ell|[Tt]elling|[Tt]old) (the )?[Cc]loud[[:>:]]/\1 Claude/g
+s/[[:<:]]([Tt]alk|[Tt]alking|[Tt]alked) to (the )?[Cc]loud[[:>:]]/\1 to Claude/g
+s/[[:<:]][Cc]loud (or|and) (ChatGPT|GPT|[Gg]emini)[[:>:]]/Claude \1 \2/g
+s/[[:<:]][Cc]loud [Cc]ode[[:>:]]/Claude Code/g
+# "canonicalize CloudMD" — dictated 2026-08-01. The existing rule covers "Claude MD"
+# but not the Cloud spelling, which is the same near-homophone one stage earlier.
+s/[[:<:]][Cc]loud ?[Mm][Dd][[:>:]]/CLAUDE.md/g

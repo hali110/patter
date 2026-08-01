@@ -73,11 +73,36 @@ Ship it in April and tag the release	Ship it in April and tag the release
   padded   text  	padded text
 # Whisper spells the initialism differently every time it fails on it; only "JGPD"
 # was seen in real use (daemon.log 2026-07-31), the rest are the same letter classes.
-better results from Cloud or JGPD	better results from Cloud or ChatGPT
+# Both halves of this line were wrong and they are fixed by two rules in sequence:
+# the JGPD rule runs first, then the cloud-or-ChatGPT rule keys off its output. That
+# ordering is load-bearing — moving the cloud rules above the JGPD ones breaks it.
+better results from Cloud or JGPD	better results from Claude or ChatGPT
 I asked JGPT about it	I asked ChatGPT about it
 paste it into chat GPD	paste it into ChatGPT
 paste it into chad GBT	paste it into ChatGPT
-# Negative cases: the tail is what makes the rule safe. "Chad" and "chat" alone must
-# survive, and so must the real English word "cloud" — Claude is glossary-only.
+# Negative case: the tail is what makes the ChatGPT rules safe — "Chad" and "chat"
+# must both survive on their own.
 Chad opened a chat about it	Chad opened a chat about it
+# Claude/cloud. All five positives are verbatim from real takes (daemon.log 07-31).
+# "cloud" appears 10 times in the 612-take corpus and is Claude 10/10, but the
+# glossary slot alone only fixes 1 in 3, so the not-real-English forms are anchored.
+So even me, I'm talking to Cloud every day	So even me, I'm talking to Claude every day
+you just tell Cloud, oh, how did you define reasoning	you just tell Claude, oh, how did you define reasoning
+it's easier to tell the cloud how you defined it	it's easier to tell Claude how you defined it
+better results from Cloud or ChatGPT	better results from Claude or ChatGPT
+go ahead and canonicalize CloudMD	go ahead and canonicalize CLAUDE.md
+# Negative cases. These are the reason there is no bare cloud rule, and the reason
+# no ask-form is listed — each is a sentence a person genuinely says.
 we never send audio to the cloud	we never send audio to the cloud
+ask the cloud provider about it	ask the cloud provider about it
+the cloud is down again	the cloud is down again
+cloud storage costs money	cloud storage costs money
+# Segment-boundary cases. whisper-server emits one line per segment with a leading
+# space, so joining them leaves a DOUBLE space wherever it broke a line — and every
+# multi-word rule matches a single one. These four all silently passed through until
+# clean.sh was fixed to squeeze before replacing. Keep them: they are the only cases
+# in this file that exercise the join, and the bug was invisible without them.
+I am talking to  Cloud every day	I am talking to Claude every day
+please run get  pull on main	please run git pull on main
+both april  tags are visible	both AprilTags are visible
+restart the ross  bag on tyler  01	restart the rosbag on tyler01
