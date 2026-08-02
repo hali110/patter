@@ -18,9 +18,24 @@ Break one of these and it is no longer this project.
    The daemon builds with a single `swiftc` invocation and always will.
 3. **One text pipeline.** Daemon and CLI both transcribe through `transcribe.sh`.
    A jargon or replacement fix improves both paths or it does not ship.
-4. **One job.** Dictation. Not notes, not commands, not an assistant, not a
-   settings UI. Features that do not reduce time-from-speech-to-correct-text are
-   rejected on sight.
+4. **Nothing gets between the key and the cursor.** Dictation is the job on the
+   hot path, and anything that does not reduce time-from-speech-to-correct-text is
+   rejected there on sight. Not notes, not commands, not an assistant, not a
+   settings UI, not a cloud sync. Work that runs **after the fact, on logs and on
+   `takes/`, off the hot path** is permitted — it cannot slow dictation down by
+   construction — and it is still subject to invariants 1–3.
+
+   *Rescoped 2026-08-01, from "One job. Dictation."* The reword is deliberate and
+   narrow. What actually earned this rule its keep was never single-purposeness; it
+   was the latency discipline that produced the budget table. The one feature that
+   genuinely misfired, right ⌘, did not fail for being a second *job* — it failed
+   for putting a second job **on the hot path**, and got used 11 times against ⌥'s
+   164 on its first day. Worded this way the invariant still rejects every example
+   it rejected before, while permitting `dictate prompting` and the offline speech
+   analysis in `SPEECH_TODO.md`, which had been formally in violation since
+   2026-07-29 despite being unable to touch the hot path. Deleting the invariant
+   outright was considered and refused: that would have discarded the discipline to
+   buy something the rescope gives for free.
 
 > **The right-⌘ refine path deliberately strains invariant 4.** Restructuring
 > speech into a written request is arguably a second job. It stays only as long as
@@ -39,7 +54,8 @@ Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
 | Capture onset loss | ≤150 ms | 63–150 ms | CoreAudio device start. Audio before this is gone. |
 | Capture tail loss | ≤25 ms | ~21 ms | One 1024-frame tap buffer, in flight at key release. |
 | Release → paste | ≤600 ms | 393–561 ms in real use | Dominated by one fixed 30s encoder window. 22s of speech costs 561 ms. |
-| Refine (right ⌘ only) | ≤2000 ms | 480–**5735 ms** | Local 7B on Metal. Scales with **output** length, unlike whisper. Off the right-⌥ path entirely. **The ≤2000 ms figure was calibrated on ≤138-word takes and does not survive long-form use**: on 2026-07-31 a 398-word / 123.7 s take cost 5735 ms refine and 8850 ms end-to-end, and 4 of that day's 5 takes breached total budget. Nothing regressed — generation is autoregressive, so a two-minute utterance is intrinsically a multi-second stage and no tuning changes that. Either scope a separate long-take budget or gate ⌘ by duration; see DICTATE_TODO item 28. Median short take ~1200 ms. |
+| Refine, short (<150 words) | ≤2000 ms | 480–1935 ms | Local 7B on Metal. Median ~1200 ms. This is the row the original ⌘ design was calibrated against. |
+| Refine, long-form (150+ words) | ≤9000 ms | 2409–**8850 ms** | **A separate budget on purpose, settled 2026-08-01.** Refine cost tracks **output** length because generation is autoregressive, so a two-minute utterance is intrinsically a multi-second stage — the opposite of whisper's flat 30 s window, and not something tuning fixes. Measured: a 398-word / 123.7 s take cost 5735 ms refine, 8850 ms end-to-end. Holding one ≤2000 ms row over both classes meant real use breached budget 4 times in 5, which is how a budget stops being read as one. Long thinking-out-loud is ⌘'s best case, so it is budgeted rather than gated. Both rows are off the right-⌥ path entirely. |
 | Paste | ≤10 ms | 0–7 ms | Pasteboard write + synthetic ⌘V. |
 | `sh` + `curl` overhead | ~25 ms | 25 ms | Price of invariant 3. Deliberate. Do not "optimize" it. |
 | Cold model load | ~10 s | — | Once, at `dictate start`. Never on the hot path. |
@@ -90,17 +106,22 @@ Facts that constrain the design, established by measurement:
   slot is unearned under the "verified-unaided terms are deliberately absent"
   rule. Real audio says the opposite. **The probe can prove a term is biased for;
   it cannot prove one is unnecessary.** Only the corpus can do that.
-- **Whitespace normalisation must run BEFORE `replacements.sed`, not after.**
-  `whisper-server` emits one line per segment, each carrying its own leading
-  space, so joining them leaves a **double space wherever whisper broke a line** —
-  and every multi-word rule in the file matches a single one. `talking to  Cloud`,
-  `get  pull`, `april  tags` and `ross  bag` all passed through untouched while
-  the identical single-spaced text was rewritten. It went unnoticed because every
-  case in `replacements.tsv` was hand-typed with single spaces: **the test suite
-  and the bug shared an assumption**, so 77 green tests could not see it. Found
-  only by running two real takes of the same sentence and getting two different
-  answers. `tests/replacements.tsv` now carries four double-spaced cases; they are
-  the only ones that exercise the segment join, so do not "tidy" them.
+- **The segment join produces a single space, and a "bug" here was reported and
+  then disproved — the disproof is the useful part.** Every multi-word rule matches
+  one space, so double-spaced input would silently skip it, and `whisper-server`
+  emitting one line per segment looks like it should produce doubles. It does not:
+  `clean.sh` uses `tr -d '\n'`, which **deletes** the newline, and segments carry
+  their own leading space, so a join yields exactly one. Verified across **all 623
+  stored takes — zero contain a double space after the real join**, and re-running
+  the whole corpus through the old and new `clean.sh` produced **0 differences**.
+  The false alarm came from a checking harness that used `tr '\n' ' '`, which
+  **replaces** the newline and therefore adds a space on top of the segment's own.
+  General lesson, since it cost a wrong entry in this file: **a harness that
+  reformats data before testing it can manufacture the bug it then reports** — when
+  a defect appears only through a test path, reproduce it through the real one
+  before believing it. The leading squeeze was kept anyway as cheap insurance for
+  non-daemon callers, and `tests/replacements.tsv` keeps four double-spaced cases
+  as robustness tests. Neither is evidence the daemon path was ever broken.
 - **The model is resident and GPU-backed.** `whisper-server` holds ~2GB and runs
   on the Metal backend with flash attention. If a transcript takes 10s, the
   server died and `transcribe.sh` silently fell back to `whisper-cli` — check the
@@ -228,18 +249,19 @@ untouched and never reaches the model.
   on `127.0.0.1:8091` with `-ngl 99`. `dictate pull-model` fetches it. Absent, the
   daemon runs normally and right ⌘ pastes raw — never a hard failure.
 - **A capped generation is a failure and must passthrough.** `refine.sh` sends
-  `max_tokens: 512` and **reads `finish_reason`**; `"length"` routes to
+  `max_tokens: 1500` and **reads `finish_reason`**; `"length"` routes to
   `passthrough()` like any other error. This is not optional politeness — without
   it a long take is cut mid-word and pasted into the focused document with nothing
   in the log, which is the silently-ate-a-sentence bug (see "check the metadata"
   under Rules). Measured: a 398-word take used **335 of 512**, so it was ~1.5x from
   firing in normal use. **Do not "fix" a future recurrence by raising the cap** —
   that moves the cliff instead of removing it, and since generation is
-  autoregressive a bigger cap is also a longer worst case. The check is what makes
-  the cliff impossible; the number is then just a number. Accepted consequence:
-  above roughly 400 words ⌘ now degrades to plain dictation rather than corrupting
-  it, which is the correct direction and the signal that the long-take budget
-  question needs settling.
+  autoregressive a bigger cap is also a longer worst case. **The check is what makes
+  the cliff impossible; only then is the number free to move.** It was raised 512 →
+  1500 on 2026-08-01 in that order and never as a substitute — at 512 the passthrough
+  boundary sat at ~400 words, which is where Haider's actual long-form takes land, so
+  ⌘ would have quietly degraded to plain dictation in its single best case. It now
+  sits near ~1200 words. Above it, ⌘ pastes the raw transcript and says so on stderr.
 - **`refine.sh` never fails closed.** Every error path prints its input unchanged
   and explains on stderr. A refine that silently ate a sentence would be strictly
   worse than not having the feature.
