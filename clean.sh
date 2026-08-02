@@ -6,14 +6,18 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # whisper-server emits one line per segment and can split mid-word ("od ometry"),
 # so segments are joined by deleting newlines — they carry their own leading spaces.
 #
-# The squeeze MUST run before replacements.sed, and it used to run only after.
-# Joining segments leaves a DOUBLE space wherever whisper broke a line, and every
-# multi-word rule in that file matches a single space, so a phrase split across a
-# segment boundary silently missed: "talking to  Cloud", "get  pull", "april  tags"
-# all passed straight through while the identical single-spaced text was rewritten.
-# Measured on the real corpus 2026-08-01 — two takes containing the same sentence,
-# one fixed and one not, which is what exposed it. Invisible to `dictate test`
-# because every case in replacements.tsv was hand-typed with single spaces: the
-# suite and the bug shared an assumption. The trailing squeeze stays, since a rule
-# can introduce its own doubling.
+# The leading squeeze is DEFENSIVE, not a bug fix, and the distinction matters
+# because it was briefly recorded as one. Every multi-word rule below matches a
+# single space, so any double-spaced input silently skips it. On the daemon path
+# that cannot currently happen: `tr -d '\n'` DELETES the newline and whisper's
+# segments each carry their own leading space, so a join yields exactly one space —
+# verified across all 623 stored takes, zero of which contain a double space after
+# the real join. (The scare came from a test harness using `tr '\n' ' '`, which
+# REPLACES the newline and so adds a space on top of the segment's own. That is a
+# property of the harness, not of the pipeline.)
+#
+# Kept anyway because it costs one `sed` and removes a whole class of silent miss
+# for any caller that is not the daemon — `dictate refine` on pasted text, a future
+# transcribe.sh that joins differently, or a model whose segments end in a space.
+# The trailing squeeze stays too, since a rule can introduce its own doubling.
 tr -d '\n' | sed -E 's/  +/ /g' | sed -E -f "$DIR/replacements.sed" | sed -E 's/  +/ /g; s/^ +| +$//g'

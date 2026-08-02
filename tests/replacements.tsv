@@ -97,11 +97,12 @@ we never send audio to the cloud	we never send audio to the cloud
 ask the cloud provider about it	ask the cloud provider about it
 the cloud is down again	the cloud is down again
 cloud storage costs money	cloud storage costs money
-# Segment-boundary cases. whisper-server emits one line per segment with a leading
-# space, so joining them leaves a DOUBLE space wherever it broke a line — and every
-# multi-word rule matches a single one. These four all silently passed through until
-# clean.sh was fixed to squeeze before replacing. Keep them: they are the only cases
-# in this file that exercise the join, and the bug was invisible without them.
+# Double-space robustness. These were added believing whisper's segment join produced
+# doubles; it does not — `tr -d '\n'` deletes the newline and segments carry their own
+# leading space, verified across all 623 stored takes (zero doubles, and the corpus
+# re-run old-vs-new produced 0 diffs). So these do NOT reproduce a real daemon failure.
+# Kept as genuine robustness tests for non-daemon callers of clean.sh, which is also
+# why clean.sh squeezes before replacing. Do not cite them as evidence of a past bug.
 I am talking to  Cloud every day	I am talking to Claude every day
 please run get  pull on main	please run git pull on main
 both april  tags are visible	both AprilTags are visible
