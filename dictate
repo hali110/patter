@@ -1,7 +1,7 @@
 #!/bin/sh
 # dictate — local hold-to-talk dictation for macOS. See CLAUDE.md for the rules.
 #
-#   dictate start | stop | build | doctor | test | bench | log
+#   dictate start | stop | build | format | doctor | test | bench | log
 #   dictate refine [text] restructure text through the local LLM (stdin if no arg)
 #   dictate pull-model    download the ~4.7GB refine model
 #   dictate               terminal fallback loop (Enter records, Enter stops)
@@ -220,6 +220,37 @@ doctor)
   exit "$fail"
   ;;
 
+format)
+  # Swift only, and that is a deliberate limit rather than a stopping point.
+  # `swift format` ships INSIDE the Swift toolchain that `dictate build` already
+  # requires, so it is not a new dependency and invariant 2 is untouched. shfmt
+  # (shell) and prettier (markdown) both would be — prettier needs a Node runtime,
+  # which invariant 2 rules out outright, and it would reflow the TODO/LOG prose,
+  # which is the project's記録 rather than formattable text.
+  command -v swift >/dev/null || { echo "swift toolchain not found — this ships with Xcode / Command Line Tools"; exit 1; }
+  swift format --version >/dev/null 2>&1 || { echo "this Swift toolchain has no 'swift format' (needs 5.8+); yours: $(swift --version 2>&1 | head -1)"; exit 1; }
+  [ -f "$DIR/.swift-format" ] || { echo ".swift-format missing — refusing to format with defaults, which rewrite the whole daemon"; exit 1; }
+
+  if [ "$2" = "--check" ]; then
+    drift=0
+    for f in "$DIR"/daemon/*.swift; do
+      swift format --configuration "$DIR/.swift-format" "$f" | diff -q "$f" - >/dev/null \
+        || { echo "  drifted: ${f#$DIR/}"; drift=1; }
+    done
+    [ "$drift" = 0 ] && echo "all formatted" || echo "→ run: dictate format"
+    exit "$drift"
+  fi
+
+  n=0
+  for f in "$DIR"/daemon/*.swift; do
+    before=$(shasum "$f" | cut -d' ' -f1)
+    swift format --configuration "$DIR/.swift-format" -i "$f" \
+      || { echo "swift format failed on ${f#$DIR/}"; exit 1; }
+    [ "$(shasum "$f" | cut -d' ' -f1)" = "$before" ] || { echo "  formatted: ${f#$DIR/}"; n=$((n+1)); }
+  done
+  [ "$n" = 0 ] && echo "already formatted" || echo "$n file(s) changed — rebuild with: dictate build"
+  ;;
+
 test)
   pass=0; fail=0
   while IFS="$TAB" read -r raw want; do
@@ -420,6 +451,10 @@ health
   permissions     the Accessibility / Input Monitoring re-grant dance, one command
   pull-model      fetch the 7B refine model for the right-⌘ path
 
+  format [--check]
+                  format daemon/*.swift with swift-format. --check exits 1 on
+                  drift without writing, for use before a commit.
+
 text pipeline
   test            run tests/replacements.tsv through the real pipeline
   refine-test     assert refine.txt properties (requirements survive, filler does not)
@@ -439,7 +474,7 @@ USAGE
 
 *)
   echo "dictate: unknown command '$1'"
-  echo "usage: dictate [start|stop|build|doctor|permissions|test|refine-test|bench|log|refine|prompting|takes|pull-model|help]"
+  echo "usage: dictate [start|stop|build|format|doctor|permissions|test|refine-test|bench|log|refine|prompting|takes|pull-model|help]"
   exit 1
   ;;
 esac

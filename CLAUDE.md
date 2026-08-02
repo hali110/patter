@@ -233,8 +233,33 @@ sed supports it and unanchored rules corrupt real words (`network tree` →
 `networktree`). Every rule added needs a case in `tests/replacements.tsv`.
 
 **Operator actions are one command.** `dictate build`, `dictate doctor`,
-`dictate test`, `dictate bench`. Never a multi-step terminal runbook, never a
-manual `swiftc` incantation in the README.
+`dictate test`, `dictate bench`, `dictate format`. Never a multi-step terminal
+runbook, never a manual `swiftc` incantation in the README.
+
+**Formatting is Swift-only, and the boundary is invariant 2.** `dictate format`
+runs `swift format`, which ships **inside the Swift toolchain `dictate build`
+already requires** — so it is not a new dependency and costs the invariant nothing.
+`dictate format --check` exits 1 on drift without writing. Two languages are
+deliberately *not* formatted. **Shell** would need `shfmt`, a genuinely new
+Homebrew dependency for ~740 lines whose comment blocks are hand-wrapped and are
+the real documentation. **Markdown is refused outright**: `prettier` needs a Node
+runtime, which invariant 2 rules out, and it would reflow the prose in the
+`*_TODO.md` / `*_LOG.md` pairs — that text is the project's record, not content to
+be formatted. If shell formatting is ever wanted, it is a dependency decision and
+belongs in the log, not in a config file.
+
+**`.swift-format` is tuned to the code that exists, not to the tool's defaults**,
+and the difference is 163 changed lines against 1237. Defaults use 2-space indent
+where this codebase has always used 4, and a 100-column limit where the long lines
+are almost all single-line `log()` calls — `daemon.log` is the only debugging
+surface a GUI daemon has, and a wrapped call is harder to grep in the source than
+a long one. `respectsExistingLineBreaks` is on for the hand-aligned
+`AudioUnitSetProperty` argument stacks. Note that swift-format's JSON parser
+**rejects unknown keys**, so the config cannot carry comments — that is why this
+rationale lives here. The one-time reformat is recorded in
+`.git-blame-ignore-revs`, because `Recorder.swift` and `main.swift` hold the TCC,
+AirPods-pin and tap-deafness knowledge and `git blame -L` is how it gets recovered.
+Wire it once per clone: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 ## The refine path (right ⌘)
 
