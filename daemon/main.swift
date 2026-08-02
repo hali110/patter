@@ -21,8 +21,8 @@ redirectLogToFile()
 
 /// Which hotkey started the take, and therefore what happens to the text.
 enum Mode {
-    case raw      // right ⌥ — whisper only
-    case refine   // right ⌘ — whisper, then the local LLM
+    case raw  // right ⌥ — whisper only
+    case refine  // right ⌘ — whisper, then the local LLM
 
     /// The device-specific modifier bit, not the generic mask: with the left key of
     /// the same pair also held, the generic mask stays set on release and the take
@@ -68,10 +68,14 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
             menu.addItem(info)
         }
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Delete Last Dictation", action: #selector(deleteLastDictation), keyEquivalent: ""))
+        menu.addItem(
+            NSMenuItem(title: "Delete Last Dictation", action: #selector(deleteLastDictation), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Reveal Log", action: #selector(revealLog), keyEquivalent: "l"))
-        menu.addItem(NSMenuItem(title: "Quit dictate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        menu.items.forEach { if $0.action == #selector(revealLog) || $0.action == #selector(deleteLastDictation) { $0.target = self } }
+        menu.addItem(
+            NSMenuItem(title: "Quit dictate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.items.forEach {
+            if $0.action == #selector(revealLog) || $0.action == #selector(deleteLastDictation) { $0.target = self }
+        }
         // Delegate tracks whether the menu is open: clicks inside it must not count
         // as caret movement, or the undo would disarm on the way to being clicked.
         menu.delegate = self
@@ -88,12 +92,16 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
             // The full path, because the grant is made in a file picker and the app
             // lives several folders deep. "DictateDaemon.app" alone sent a past
             // session hunting for a `bin/` binary that has not existed since 7ce26f0.
-            log("accessibility: NOT trusted — transcripts will stay on the clipboard; in System Settings → Privacy & Security → Accessibility add (⌘⇧G to paste the path): \(Bundle.main.bundleURL.path) — it appears in the list as \"DictateDaemon\". Re-toggle after every rebuild, then: dictate stop && dictate start")
+            log(
+                "accessibility: NOT trusted — transcripts will stay on the clipboard; in System Settings → Privacy & Security → Accessibility add (⌘⇧G to paste the path): \(Bundle.main.bundleURL.path) — it appears in the list as \"DictateDaemon\". Re-toggle after every rebuild, then: dictate stop && dictate start"
+            )
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         }
 
         requestMic { granted in
-            log("microphone: \(granted ? "granted" : "DENIED — enable in System Settings → Privacy & Security → Microphone")")
+            log(
+                "microphone: \(granted ? "granted" : "DENIED — enable in System Settings → Privacy & Security → Microphone")"
+            )
             if granted { _ = self.recorder.prepare() }
         }
         ensureServer()
@@ -121,9 +129,10 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
     private func ensureServer() {
         guard FileManager.default.fileExists(atPath: modelPath) else { return }
-        spawnServer(name: "whisper", port: 8090, probe: "/",
-                    cmd: "/opt/homebrew/bin/whisper-server -m '\(modelPath)' --port 8090 --host 127.0.0.1",
-                    onFail: "transcription will fall back to whisper-cli (~10s/utterance)")
+        spawnServer(
+            name: "whisper", port: 8090, probe: "/",
+            cmd: "/opt/homebrew/bin/whisper-server -m '\(modelPath)' --port 8090 --host 127.0.0.1",
+            onFail: "transcription will fall back to whisper-cli (~10s/utterance)")
 
         // Absent model is not an error: the daemon is fully usable on right ⌥ alone,
         // and right ⌘ degrades to pasting the raw transcript rather than breaking.
@@ -133,10 +142,11 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         }
         // -ngl 99 puts every layer on Metal; without it llama.cpp runs on CPU and the
         // refine stage goes from ~1.5s to tens of seconds.
-        spawnServer(name: "refine", port: 8091, probe: "/health",
-                    cmd: "/opt/homebrew/bin/llama-server -m '\(refineModelPath)' --port 8091 --host 127.0.0.1 "
-                       + "-ngl 99 -c 4096 -fa on --no-webui",
-                    onFail: "right ⌘ will paste raw transcripts")
+        spawnServer(
+            name: "refine", port: 8091, probe: "/health",
+            cmd: "/opt/homebrew/bin/llama-server -m '\(refineModelPath)' --port 8091 --host 127.0.0.1 "
+                + "-ngl 99 -c 4096 -fa on --no-webui",
+            onFail: "right ⌘ will paste raw transcripts")
     }
 
     /// Model load is ~5–10s, so it happens once at startup and never on the hot path.
@@ -165,7 +175,9 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         switch listen {
         case kIOHIDAccessTypeGranted: log("input monitoring: granted")
         case kIOHIDAccessTypeDenied:
-            log("input monitoring: DENIED — in System Settings → Privacy & Security → Input Monitoring add (⌘⇧G): \(Bundle.main.bundleURL.path) — listed as \"DictateDaemon\". This is a separate grant from Accessibility; the hotkey is deaf without it.")
+            log(
+                "input monitoring: DENIED — in System Settings → Privacy & Security → Input Monitoring add (⌘⇧G): \(Bundle.main.bundleURL.path) — listed as \"DictateDaemon\". This is a separate grant from Accessibility; the hotkey is deaf without it."
+            )
         default:
             log("input monitoring: not yet determined — prompting")
             IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
@@ -179,23 +191,27 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         // beyond the fact that one arrived, and the tap is listenOnly.
         // Mouse downs are watched for one reason: a click moves the caret, which
         // invalidates the pending undo (backspacing would eat the wrong text).
-        let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let mask =
+            CGEventMask(1 << CGEventType.flagsChanged.rawValue)
             | CGEventMask(1 << CGEventType.keyDown.rawValue)
             | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
             | CGEventMask(1 << CGEventType.tapDisabledByTimeout.rawValue)
             | CGEventMask(1 << CGEventType.tapDisabledByUserInput.rawValue)
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
-            eventsOfInterest: mask,
-            callback: { _, type, event, refcon in
-                Unmanaged<Dictator>.fromOpaque(refcon!).takeUnretainedValue().handle(type, event)
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque())
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
+                eventsOfInterest: mask,
+                callback: { _, type, event, refcon in
+                    Unmanaged<Dictator>.fromOpaque(refcon!).takeUnretainedValue().handle(type, event)
+                    return Unmanaged.passUnretained(event)
+                },
+                userInfo: Unmanaged.passUnretained(self).toOpaque())
         else {
-            log("event tap creation failed — add DictateDaemon.app in System Settings → Privacy & Security → Accessibility, then rerun: dictate start")
+            log(
+                "event tap creation failed — add DictateDaemon.app in System Settings → Privacy & Security → Accessibility, then rerun: dictate start"
+            )
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
             exit(1)
         }
@@ -224,7 +240,9 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         // not dictation. Discard rather than paste a fragment into the focused app.
         // It also means the caret may have moved, so the pending undo dies with it.
         if type == .keyDown {
-            DispatchQueue.main.async { self.cancelRec(); self.lastPaste = nil }
+            DispatchQueue.main.async {
+                self.cancelRec(); self.lastPaste = nil
+            }
             return
         }
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
@@ -237,8 +255,11 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         }
 
         let code = event.getIntegerValueField(.keyboardEventKeycode)
-        guard let mode: Mode = (code == Mode.raw.keycode) ? .raw
-                             : (code == Mode.refine.keycode) ? .refine : nil else { return }
+        guard
+            let mode: Mode = (code == Mode.raw.keycode)
+                ? .raw
+                : (code == Mode.refine.keycode) ? .refine : nil
+        else { return }
         let down = event.flags.rawValue & mode.flagBit != 0
         DispatchQueue.main.async { down ? self.startRec(mode) : self.stopRec(mode) }
     }
@@ -372,10 +393,11 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
                 }
                 self.inFlight -= 1
                 if self.inFlight == 0 && self.recordingMode == nil { self.icon("mic") }
-                log("[\(n)] \(mode.label) audio=\(String(format: "%.1f", seconds))s \(take.levels) "
-                    + "transcribe=\(transcribeMs)ms \(mode == .refine ? "refine=\(refineMs)ms " : "")"
-                    + "paste=\(pasteMs)ms total=\(ms(released))ms "
-                    + "· \(txt.isEmpty ? "(empty)" : txt)")
+                log(
+                    "[\(n)] \(mode.label) audio=\(String(format: "%.1f", seconds))s \(take.levels) "
+                        + "transcribe=\(transcribeMs)ms \(mode == .refine ? "refine=\(refineMs)ms " : "")"
+                        + "paste=\(pasteMs)ms total=\(ms(released))ms "
+                        + "· \(txt.isEmpty ? "(empty)" : txt)")
                 // The model can silently drop a requirement, and the spoken original is
                 // then gone for good. Both texts are always recoverable from the log.
                 if mode == .refine && txt != raw { log("[\(n)]   raw: \(raw)") }

@@ -9,8 +9,9 @@ import AudioToolbox
 
 final class Recorder {
     private let engine = AVAudioEngine()
-    private let outFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000,
-                                          channels: 1, interleaved: true)!
+    private let outFormat = AVAudioFormat(
+        commonFormat: .pcmFormatInt16, sampleRate: 16_000,
+        channels: 1, interleaved: true)!
     private var converter: AVAudioConverter?
     private var file: AVAudioFile?
     private let lock = NSLock()
@@ -68,8 +69,10 @@ final class Recorder {
         // Registered once — prepare() re-runs on every such change.
         if !observing {
             observing = true
-            NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
-                                                   object: engine, queue: .main) { [weak self] _ in
+            NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine, queue: .main
+            ) { [weak self] _ in
                 guard let self else { return }
                 log("capture: device configuration changed — rebuilding tap")
                 self.engine.inputNode.removeTap(onBus: 0)
@@ -94,9 +97,10 @@ final class Recorder {
             return
         }
         var id = mic
-        let err = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
-                                       kAudioUnitScope_Global, 0, &id,
-                                       UInt32(MemoryLayout<AudioDeviceID>.size))
+        let err = AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global, 0, &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size))
         if err == noErr {
             log("capture: pinned to built-in mic")
         } else {
@@ -105,12 +109,14 @@ final class Recorder {
     }
 
     private static func builtInMicID() -> AudioDeviceID? {
-        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
-                                              mScope: kAudioObjectPropertyScopeGlobal,
-                                              mElement: kAudioObjectPropertyElementMain)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr,
-              size > 0 else { return nil }
+            size > 0
+        else { return nil }
         var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr
         else { return nil }
@@ -118,14 +124,17 @@ final class Recorder {
         for id in ids {
             var transport: UInt32 = 0
             var tSize = UInt32(MemoryLayout<UInt32>.size)
-            var tAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyTransportType,
-                                                   mScope: kAudioObjectPropertyScopeGlobal,
-                                                   mElement: kAudioObjectPropertyElementMain)
+            var tAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyTransportType,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain)
             guard AudioObjectGetPropertyData(id, &tAddr, 0, nil, &tSize, &transport) == noErr,
-                  transport == kAudioDeviceTransportTypeBuiltIn else { continue }
-            var sAddr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
-                                                   mScope: kAudioObjectPropertyScopeInput,
-                                                   mElement: kAudioObjectPropertyElementMain)
+                transport == kAudioDeviceTransportTypeBuiltIn
+            else { continue }
+            var sAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioObjectPropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain)
             var sSize: UInt32 = 0
             guard AudioObjectGetPropertyDataSize(id, &sAddr, 0, nil, &sSize) == noErr, sSize > 0 else { continue }
             return id
@@ -144,13 +153,15 @@ final class Recorder {
         guard let mic = Self.builtInMicID(), let unit = engine.inputNode.audioUnit else { return }
         var current = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let readErr = AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
-                                           kAudioUnitScope_Global, 0, &current, &size)
+        let readErr = AudioUnitGetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global, 0, &current, &size)
         if readErr == noErr && current == mic { return }
         var id = mic
-        let err = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
-                                       kAudioUnitScope_Global, 0, &id,
-                                       UInt32(MemoryLayout<AudioDeviceID>.size))
+        let err = AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global, 0, &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size))
         if err == noErr {
             log("capture: pin was lost (device \(current)) — re-pinned to built-in mic")
         } else {
@@ -162,8 +173,9 @@ final class Recorder {
     func start(to url: URL) throws -> Int {
         let t0 = Date()
         ensurePinned()
-        let f = try AVAudioFile(forWriting: url, settings: outFormat.settings,
-                                commonFormat: .pcmFormatInt16, interleaved: true)
+        let f = try AVAudioFile(
+            forWriting: url, settings: outFormat.settings,
+            commonFormat: .pcmFormatInt16, interleaved: true)
         converter?.reset()
         writeFailureLogged = false
         lock.lock(); file = f; peak = 0; windowRMS.removeAll(keepingCapacity: true); lock.unlock()
@@ -176,9 +188,10 @@ final class Recorder {
         engine.stop()
         lock.lock()
         let (floor, speech) = levels()
-        let take = Take(seconds: Double(file?.length ?? 0) / outFormat.sampleRate,
-                        peak: peak, floor: floor, speech: speech)
-        file = nil   // closes the file; a tap callback blocked on the lock sees nil and returns
+        let take = Take(
+            seconds: Double(file?.length ?? 0) / outFormat.sampleRate,
+            peak: peak, floor: floor, speech: speech)
+        file = nil  // closes the file; a tap callback blocked on the lock sees nil and returns
         lock.unlock()
         return take
     }
@@ -209,7 +222,9 @@ final class Recorder {
             return buf
         }
         if let error {
-            if !writeFailureLogged { log("capture: conversion failed — \(error.localizedDescription)"); writeFailureLogged = true }
+            if !writeFailureLogged {
+                log("capture: conversion failed — \(error.localizedDescription)"); writeFailureLogged = true
+            }
             return
         }
         guard out.frameLength > 0 else { return }
@@ -229,7 +244,9 @@ final class Recorder {
         }
 
         do { try file.write(from: out) } catch {
-            if !writeFailureLogged { log("capture: write failed — \(error.localizedDescription)"); writeFailureLogged = true }
+            if !writeFailureLogged {
+                log("capture: write failed — \(error.localizedDescription)"); writeFailureLogged = true
+            }
         }
     }
 }
