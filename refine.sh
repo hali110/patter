@@ -40,7 +40,16 @@ command -v jq >/dev/null || passthrough "jq not found"
 curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/health" \
   || passthrough "llama-server not up on :$PORT (start it with: dictate start)"
 
-MAX_TOKENS=512
+# 512 was set when takes were ~20s and was ~1.5x from firing on a real 398-word take
+# (335 used). Raised to 1500 on 2026-08-01 as a deliberate decision, AFTER the
+# finish_reason check below existed and never as a substitute for it: raising a cap
+# without the check just moves an invisible cliff. With the check, the number only
+# decides where ⌘ stops refining and starts passing through — roughly 1200 words now,
+# against ~400 before, which is what keeps long thinking-out-loud (⌘'s best case) on
+# the refine path. Cost is real and is budgeted separately in CLAUDE.md: generation is
+# autoregressive, so a two-minute take is a ~6s stage and the ≤2000ms row does not
+# apply to it.
+MAX_TOKENS=1500
 body=$(jq -n --rawfile sys "$DIR/refine.txt" --arg usr "$raw" --argjson max "$MAX_TOKENS" '{
   messages: [ {role:"system", content:$sys}, {role:"user", content:$usr} ],
   temperature: 0,
