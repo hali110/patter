@@ -1,0 +1,11 @@
+# Revisions to skip in git blame. Wire it up once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only whitespace-only, tree-wide reformats belong here. Each entry must be
+# verified semantically inert before being added - for the commit below, both
+# files were byte-identical after stripping all whitespace and the result
+# compiled clean. Never add a commit that changed behaviour: this file makes
+# blame lie about it permanently.
+
+# Apply swift-format to the daemon (whitespace only)
+4c064f20c7cb3627d2decafa9e54b037a647bc72
