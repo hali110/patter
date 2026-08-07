@@ -2,7 +2,7 @@
 import Foundation
 
 // Derived, never hardcoded: walk up from the executable until transcribe.sh appears.
-// Under LaunchServices that is DictateDaemon.app/Contents/MacOS -> repo root.
+// Under LaunchServices that is PatterDaemon.app/Contents/MacOS -> repo root.
 let rootDir: String = {
     var url = Bundle.main.bundleURL
     for _ in 0..<6 {

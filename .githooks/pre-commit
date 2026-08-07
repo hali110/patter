@@ -9,7 +9,7 @@
 # dictated. Neither is recoverable from a mistake.
 #
 # Tracked in .githooks/ rather than .git/hooks/ so it survives a clone. Activated
-# by `git config core.hooksPath .githooks`, which `dictate doctor` checks.
+# by `git config core.hooksPath .githooks`, which `patter doctor` checks.
 #
 # Bypass, if a case ever genuinely warrants it, is the standard `--no-verify`.
 

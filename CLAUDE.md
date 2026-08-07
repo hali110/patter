@@ -1,4 +1,4 @@
-# dictate
+# patter
 
 Hold right ⌥ anywhere on macOS, speak, release, text lands at the cursor. Fully
 local. That is the entire product.
@@ -31,7 +31,7 @@ Break one of these and it is no longer this project.
    genuinely misfired, right ⌘, did not fail for being a second *job* — it failed
    for putting a second job **on the hot path**, and got used 11 times against ⌥'s
    164 on its first day. Worded this way the invariant still rejects every example
-   it rejected before, while permitting `dictate prompting` and the offline speech
+   it rejected before, while permitting `patter prompting` and the offline speech
    analysis in `SPEECH_TODO.md`, which had been formally in violation since
    2026-07-29 despite being unable to touch the hot path. Deleting the invariant
    outright was considered and refused: that would have discarded the discipline to
@@ -47,7 +47,7 @@ Break one of these and it is no longer this project.
 ## Latency budget
 
 Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
-`./dictate bench` after any change to the hot path; regressions >20% are bugs.
+`./patter bench` after any change to the hot path; regressions >20% are bugs.
 
 | Stage | Budget | Measured | Notes |
 |---|---|---|---|
@@ -58,7 +58,7 @@ Measured on M3 Max / `ggml-large-v3-turbo` / Metal. Re-measure with
 | Refine, long-form (150+ words) | ≤9000 ms | 2409–**8850 ms** | **A separate budget on purpose, settled 2026-08-01.** Refine cost tracks **output** length because generation is autoregressive, so a two-minute utterance is intrinsically a multi-second stage — the opposite of whisper's flat 30 s window, and not something tuning fixes. Measured: a 398-word / 123.7 s take cost 5735 ms refine, 8850 ms end-to-end. Holding one ≤2000 ms row over both classes meant real use breached budget 4 times in 5, which is how a budget stops being read as one. Long thinking-out-loud is ⌘'s best case, so it is budgeted rather than gated. Both rows are off the right-⌥ path entirely. |
 | Paste | ≤10 ms | 0–7 ms | Pasteboard write + synthetic ⌘V. |
 | `sh` + `curl` overhead | ~25 ms | 25 ms | Price of invariant 3. Deliberate. Do not "optimize" it. |
-| Cold model load | ~10 s | — | Once, at `dictate start`. Never on the hot path. |
+| Cold model load | ~10 s | — | Once, at `patter start`. Never on the hot path. |
 
 Facts that constrain the design, established by measurement:
 
@@ -232,14 +232,14 @@ product's black box, and keep it greppable and bounded.
 sed supports it and unanchored rules corrupt real words (`network tree` →
 `networktree`). Every rule added needs a case in `tests/replacements.tsv`.
 
-**Operator actions are one command.** `dictate build`, `dictate doctor`,
-`dictate test`, `dictate bench`, `dictate format`. Never a multi-step terminal
+**Operator actions are one command.** `patter build`, `patter doctor`,
+`patter test`, `patter bench`, `patter format`. Never a multi-step terminal
 runbook, never a manual `swiftc` incantation in the README.
 
-**Formatting is Swift-only, and the boundary is invariant 2.** `dictate format`
-runs `swift format`, which ships **inside the Swift toolchain `dictate build`
+**Formatting is Swift-only, and the boundary is invariant 2.** `patter format`
+runs `swift format`, which ships **inside the Swift toolchain `patter build`
 already requires** — so it is not a new dependency and costs the invariant nothing.
-`dictate format --check` exits 1 on drift without writing. Two languages are
+`patter format --check` exits 1 on drift without writing. Two languages are
 deliberately *not* formatted. **Shell** would need `shfmt`, a genuinely new
 Homebrew dependency for ~740 lines whose comment blocks are hand-wrapped and are
 the real documentation. **Markdown is refused outright**: `prettier` needs a Node
@@ -271,7 +271,7 @@ untouched and never reaches the model.
   request/response shape — so invariant 2 costs nothing. Ollama would be a second
   runtime and model store to own for no capability gain.
 - **Model** is `models/refine-q4.gguf` (Qwen2.5-7B-Instruct Q4_K_M, 4.4GB), resident
-  on `127.0.0.1:8091` with `-ngl 99`. `dictate pull-model` fetches it. Absent, the
+  on `127.0.0.1:8091` with `-ngl 99`. `patter pull-model` fetches it. Absent, the
   daemon runs normally and right ⌘ pastes raw — never a hard failure.
 - **A capped generation is a failure and must passthrough.** `refine.sh` sends
   `max_tokens: 1500` and **reads `finish_reason`**; `"length"` routes to
@@ -312,12 +312,12 @@ Hard-won; re-deriving these costs hours.
 
 - **TCC attributes a process to its "responsible process."** A daemon spawned
   from a terminal is attributed to the *terminal*, so an Accessibility grant on
-  the binary is ignored. Launch via LaunchServices (`open -g DictateDaemon.app`),
+  the binary is ignored. Launch via LaunchServices (`open -g PatterDaemon.app`),
   which is always self-responsible.
 - **launchd cannot exec from `~/Documents`** (TCC-protected) — the job dies with
   `EX_CONFIG (78)`. This is why there is an app bundle and no LaunchAgent.
 - **The Accessibility grant tracks the code signature.** Re-toggle the checkbox
-  after every rebuild. `dictate build` re-signs and reminds you.
+  after every rebuild. `patter build` re-signs and reminds you.
 - **A bundled app needs `NSMicrophoneUsageDescription`** or the mic is silently
   denied instead of prompted.
 - **stdout goes nowhere under LaunchServices.** The daemon `freopen`s its own log.
@@ -325,24 +325,24 @@ Hard-won; re-deriving these costs hours.
   makes the Accessibility grant unfixable.** Symptom: you select the app in the
   picker, it looks accepted, and no row ever appears — repeatedly, through resets
   and rebuilds. Cause: `lsregister -dump` listed *two* bundles claiming
-  `com.haider.dictate`, one of them a deleted worktree path, so System Settings
+  `com.haider.patter`, one of them a deleted worktree path, so System Settings
   bound the grant to a bundle that no longer exists. Diagnose with
-  `lsregister -dump | grep 'path:.*DictateDaemon'` — more than one line is the bug.
+  `lsregister -dump | grep 'path:.*PatterDaemon'` — more than one line is the bug.
   Fix with `lsregister -u <dead path>`, then `-f <real path>`, then `tccutil reset`.
   `lsregister` lives in
   `/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/`.
   Give a second checkout's bundle its own `CFBundleIdentifier` if it will ever run.
-- **The Privacy list shows `CFBundleName`, not the filename.** It read `dictate`
-  while the file was `DictateDaemon.app`, so the row was there and looked absent.
-  Both are now `DictateDaemon`; keep them identical.
+- **The Privacy list shows `CFBundleName`, not the filename.** Under the old name it
+  read `dictate` while the file was `DictateDaemon.app`, so the row was there and
+  looked absent. Both are now `PatterDaemon`; keep them identical.
 - **The Privacy list is a renderer over the TCC database, not the database.** The
   grant can be fully live with *no row visible at all* — that is how this ended:
-  `dictate doctor` reported accessibility, microphone and input monitoring all
+  `patter doctor` reported accessibility, microphone and input monitoring all
   granted while System Settings showed nothing. When the daemon calls
   `AXIsProcessTrustedWithOptions(prompt:)` / `IOHIDRequestAccess`, TCC is written
   directly; drawing the row is separate and unreliable for an ad-hoc signed app.
   **Never debug this from the UI.** `AXIsProcessTrusted()` inside the daemon is the
-  only ground truth, which is what `dictate doctor` reports. A whole session went
+  only ground truth, which is what `patter doctor` reports. A whole session went
   into re-adding an app that was already authorised.
 - **Opening a Bluetooth input device freezes every other app's audio.** AirPods
   cannot do A2DP playback and mic capture at once: opening their mic forces a
@@ -360,20 +360,20 @@ Hard-won; re-deriving these costs hours.
 
 ## Testing
 
-`dictate test` runs `tests/replacements.tsv` through **`clean.sh` directly** — text
+`patter test` runs `tests/replacements.tsv` through **`clean.sh` directly** — text
 in, text out, no audio and no model. That makes it fast and perfectly deterministic,
 but it is worth being precise about what it therefore does *not* cover: it tests
 `replacements.sed` only. **Glossary bias is not exercised by it at all**, because
 nothing is ever transcribed; `tests/glossary-probe.sh` is the `say`-synthesized probe
 that does that, and it is the one to reach for after reordering `jargon.txt`.
 
-`dictate refine-test` runs `tests/refine.tsv` through `refine.sh` against the live
+`patter refine-test` runs `tests/refine.tsv` through `refine.sh` against the live
 7B, plus four short-input passthrough assertions. It **carries exactly two deliberate
 red cases** and is expected to report `13 passed, 2 failed`; both reds are regression
-markers for known model defects, documented in DICTATE_TODO items 16a and 29. Do not
+markers for known model defects, documented in PATTER_TODO items 16a and 29. Do not
 delete them to get a green suite, and keep the expected count here current — stating
 it is what stops a *third* red hiding among the two. It exports
-`DICTATE_REFINE_TEST=1` so its cases are kept out of `takes/` — a synthetic pair in
+`PATTER_REFINE_TEST=1` so its cases are kept out of `takes/` — a synthetic pair in
 the eval corpus is worse than no pair.
 
 Three of the green cases are **real field pairs that used to fail**: the old prompt
@@ -391,11 +391,11 @@ must always disagree; that disagreement *is* the recency finding.
 Real-mic accuracy cannot be tested here and is validated by use. See the note above
 on `say`: the probe can prove a term is biased for, never that one is unnecessary.
 
-`dictate bench` prints the per-stage latency table above. Numbers in this file
+`patter bench` prints the per-stage latency table above. Numbers in this file
 came from it; update them here when they move.
 
 **`takes/` is a corpus, not an output directory, and it has one rule: everything in
-`*.pair.txt` must be speech nobody wrote for the model.** Opt-in via `dictate takes`,
+`*.pair.txt` must be speech nobody wrote for the model.** Opt-in via `patter takes`,
 never auto-deleted, gitignored and blocked by `.githooks/pre-commit`. It is the only
 thing that makes a `refine.txt` or model change measurable, and it has now been
 damaged twice by mechanisms nobody had looked at — `daemon.log` rotation silently

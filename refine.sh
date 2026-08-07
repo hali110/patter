@@ -3,7 +3,7 @@
 #
 # Second half of the AI path: transcribe.sh produces text, this reshapes it.
 # Kept as a script for the same reason transcribe.sh is one — the daemon and the
-# CLI (`dictate refine`) must go through identical code or the two paths drift.
+# CLI (`patter refine`) must go through identical code or the two paths drift.
 #
 # THIS SCRIPT NEVER FAILS CLOSED. Every error path prints the untouched input and
 # exits 0, because a dropped utterance is this project's worst bug (CLAUDE.md).
@@ -38,7 +38,7 @@ command -v jq >/dev/null || passthrough "jq not found"
 [ -f "$DIR/refine.txt" ] || passthrough "refine.txt missing"
 
 curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/health" \
-  || passthrough "llama-server not up on :$PORT (start it with: dictate start)"
+  || passthrough "llama-server not up on :$PORT (start it with: patter start)"
 
 # 512 was set when takes were ~20s and was ~1.5x from firing on a real 398-word take
 # (335 used). Raised to 1500 on 2026-08-01 as a deliberate decision, AFTER the
@@ -111,14 +111,14 @@ out=$(printf '%s' "$out" \
 # Only reached when the model actually ran: every passthrough() exits before this, and
 # a passthrough has no pair to record.
 #
-# DICTATE_REFINE_TEST excludes the test suite, which calls this script directly and
+# PATTER_REFINE_TEST excludes the test suite, which calls this script directly and
 # would otherwise write one pair per case into the corpus under the same filename
 # shape as a field take. That is not hypothetical: 7 of the 12 pairs on disk at
 # 2026-07-31 were `tests/refine.tsv` cases from a single 3-second run on 07-30, and
 # they were mistaken for field takes for two days — the corpus read as 12 examples
 # when it held 5. A synthetic pair is worse than no pair here, because the whole point
 # of the corpus is to measure the model against speech nobody wrote for it.
-if [ -f "$DIR/takes/.enabled" ] && [ -z "$DICTATE_REFINE_TEST" ]; then
+if [ -f "$DIR/takes/.enabled" ] && [ -z "$PATTER_REFINE_TEST" ]; then
   { printf '=== raw ===\n%s\n=== refined ===\n%s\n' "$raw" "$out"; } \
     > "$DIR/takes/$(date +%Y%m%d-%H%M%S)-$$.pair.txt" \
     || echo "refine: could not retain pair" >&2

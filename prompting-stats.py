@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Measure how Haider's prompting changes over time.
 
-    ./dictate prompting            # weekly trend
-    ./dictate prompting --split    # + dictated vs typed
+    ./patter prompting            # weekly trend
+    ./patter prompting --split    # + dictated vs typed
 
-Reads every session transcript under ~/.claude/projects and, when dictate's
+Reads every session transcript under ~/.claude/projects and, when patter's
 daemon.log is present, labels each prompt by input method. Output is markdown,
 ready to paste under a new dated heading in PROMPTING_LOG.md.
 
@@ -132,7 +132,7 @@ def is_prose(t):
 
 
 def spoken_lines():
-    """Transcripts dictate actually pasted at the cursor, for the input-method split."""
+    """Transcripts patter actually pasted at the cursor, for the input-method split."""
     seen = set()
     for p in DAEMON_LOGS:
         if not p.exists():

@@ -1,4 +1,4 @@
-// dictate-daemon — hold a key anywhere, speak, release, text lands at the cursor.
+// patter-daemon — hold a key anywhere, speak, release, text lands at the cursor.
 //
 //   right ⌥  record → whisper → paste verbatim          (~400ms)
 //   right ⌘  record → whisper → local LLM → paste       (~1.5–3s, restructured)
@@ -38,10 +38,10 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private let recorder = Recorder()
     // Serial: utterances transcribe and paste in the order they were spoken, and a
     // new recording can start while the previous one is still transcribing.
-    private let work = DispatchQueue(label: "dictate.transcribe")
+    private let work = DispatchQueue(label: "patter.transcribe")
     // Separate from `work`: model loading blocks for up to 60s per server, and an
     // utterance spoken during startup must not queue behind it.
-    private let boot = DispatchQueue(label: "dictate.boot")
+    private let boot = DispatchQueue(label: "patter.boot")
     private var recordingMode: Mode?
     private var inFlight = 0
     private var seq = 0
@@ -76,7 +76,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
             NSMenuItem(title: "Delete Last Dictation", action: #selector(deleteLastDictation), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Reveal Log", action: #selector(revealLog), keyEquivalent: "l"))
         menu.addItem(
-            NSMenuItem(title: "Quit dictate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+            NSMenuItem(title: "Quit patter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.items.forEach {
             if $0.action == #selector(revealLog) || $0.action == #selector(deleteLastDictation) { $0.target = self }
         }
@@ -87,17 +87,17 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
         log("root: \(rootDir)")
         if !FileManager.default.fileExists(atPath: modelPath) {
-            log("model: MISSING at \(modelPath) — run: dictate doctor")
+            log("model: MISSING at \(modelPath) — run: patter doctor")
         }
 
         if AXIsProcessTrusted() {
             log("accessibility: trusted — paste will work")
         } else {
             // The full path, because the grant is made in a file picker and the app
-            // lives several folders deep. "DictateDaemon.app" alone sent a past
+            // lives several folders deep. "PatterDaemon.app" alone sent a past
             // session hunting for a `bin/` binary that has not existed since 7ce26f0.
             log(
-                "accessibility: NOT trusted — transcripts will stay on the clipboard; in System Settings → Privacy & Security → Accessibility add (⌘⇧G to paste the path): \(Bundle.main.bundleURL.path) — it appears in the list as \"DictateDaemon\". Re-toggle after every rebuild, then: dictate stop && dictate start"
+                "accessibility: NOT trusted — transcripts will stay on the clipboard; in System Settings → Privacy & Security → Accessibility add (⌘⇧G to paste the path): \(Bundle.main.bundleURL.path) — it appears in the list as \"PatterDaemon\". Re-toggle after every rebuild, then: patter stop && patter start"
             )
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
         }
@@ -117,7 +117,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
 
     private func icon(_ name: String) {
-        let img = NSImage(systemSymbolName: name, accessibilityDescription: "dictate")
+        let img = NSImage(systemSymbolName: name, accessibilityDescription: "patter")
         img?.isTemplate = true  // template = auto white/black matching menu bar appearance
         statusItem.button?.image = img
     }
@@ -141,7 +141,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         // Absent model is not an error: the daemon is fully usable on right ⌥ alone,
         // and right ⌘ degrades to pasting the raw transcript rather than breaking.
         guard FileManager.default.fileExists(atPath: refineModelPath) else {
-            log("refine: model missing at \(refineModelPath) — right ⌘ will paste raw transcripts; run: dictate doctor")
+            log("refine: model missing at \(refineModelPath) — right ⌘ will paste raw transcripts; run: patter doctor")
             return
         }
         // -ngl 99 puts every layer on Metal; without it llama.cpp runs on CPU and the
@@ -180,7 +180,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
         case kIOHIDAccessTypeGranted: log("input monitoring: granted")
         case kIOHIDAccessTypeDenied:
             log(
-                "input monitoring: DENIED — in System Settings → Privacy & Security → Input Monitoring add (⌘⇧G): \(Bundle.main.bundleURL.path) — listed as \"DictateDaemon\". This is a separate grant from Accessibility; the hotkey is deaf without it."
+                "input monitoring: DENIED — in System Settings → Privacy & Security → Input Monitoring add (⌘⇧G): \(Bundle.main.bundleURL.path) — listed as \"PatterDaemon\". This is a separate grant from Accessibility; the hotkey is deaf without it."
             )
         default:
             log("input monitoring: not yet determined — prompting")
@@ -214,7 +214,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
                 userInfo: Unmanaged.passUnretained(self).toOpaque())
         else {
             log(
-                "event tap creation failed — add DictateDaemon.app in System Settings → Privacy & Security → Accessibility, then rerun: dictate start"
+                "event tap creation failed — add PatterDaemon.app in System Settings → Privacy & Security → Accessibility, then rerun: patter start"
             )
             AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
             exit(1)
@@ -310,7 +310,7 @@ final class Dictator: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private func startRec(_ mode: Mode) {
         guard recordingMode == nil else { return }  // the other hotkey already owns this take
         seq += 1
-        wavURL = URL(fileURLWithPath: NSTemporaryDirectory() + "dictate-\(seq).wav")
+        wavURL = URL(fileURLWithPath: NSTemporaryDirectory() + "patter-\(seq).wav")
         do {
             let startMs = try recorder.start(to: wavURL)
             recordingMode = mode

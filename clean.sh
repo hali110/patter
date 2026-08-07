@@ -1,6 +1,6 @@
 #!/bin/sh
 # clean.sh — raw whisper output on stdin, cleaned transcript on stdout.
-# Split out of transcribe.sh so `dictate test` can exercise it without audio:
+# Split out of transcribe.sh so `patter test` can exercise it without audio:
 # this is where jargon regressions actually happen.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # whisper-server emits one line per segment and can split mid-word ("od ometry"),
@@ -17,7 +17,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # property of the harness, not of the pipeline.)
 #
 # Kept anyway because it costs one `sed` and removes a whole class of silent miss
-# for any caller that is not the daemon — `dictate refine` on pasted text, a future
+# for any caller that is not the daemon — `patter refine` on pasted text, a future
 # transcribe.sh that joins differently, or a model whose segments end in a space.
 # The trailing squeeze stays too, since a rule can introduce its own doubling.
 tr -d '\n' | sed -E 's/  +/ /g' | sed -E -f "$DIR/replacements.sed" | sed -E 's/  +/ /g; s/^ +| +$//g'

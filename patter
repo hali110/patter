@@ -1,16 +1,16 @@
 #!/bin/sh
-# dictate — local hold-to-talk dictation for macOS. See CLAUDE.md for the rules.
+# patter — local hold-to-talk dictation for macOS. See CLAUDE.md for the rules.
 #
-#   dictate start | stop | build | format | doctor | test | bench | log
-#   dictate refine [text] restructure text through the local LLM (stdin if no arg)
-#   dictate pull-model    download the ~4.7GB refine model
-#   dictate               terminal fallback loop (Enter records, Enter stops)
+#   patter start | stop | build | format | doctor | test | bench | log
+#   patter refine [text] restructure text through the local LLM (stdin if no arg)
+#   patter pull-model    download the ~4.7GB refine model
+#   patter                terminal fallback loop (Enter records, Enter stops)
 SRC="$0"; [ -L "$SRC" ] && SRC="$(readlink "$SRC")"
 DIR="$(cd "$(dirname "$SRC")" && pwd)"
 MODEL="$DIR/models/ggml-large-v3-turbo.bin"
 REFINE_MODEL="$DIR/models/refine-q4.gguf"
 REFINE_URL="https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
-APP="$DIR/DictateDaemon.app"
+APP="$DIR/PatterDaemon.app"
 LOG="$DIR/daemon.log"
 # Everything this tool produces stays inside the checkout — logs, scratch audio,
 # models. Nothing in /tmp: a server that dies at load leaves its reason in a file
@@ -42,7 +42,7 @@ rotate_log() {
 case "$1" in
 
 stop)
-  pkill -f "dictate-daemon" 2>/dev/null && echo "daemon stopped" || echo "daemon not running"
+  pkill -f "patter-daemon" 2>/dev/null && echo "daemon stopped" || echo "daemon not running"
   pkill -f "whisper-server -m" 2>/dev/null && echo "whisper-server stopped (~2GB freed)" || echo "server not running"
   pkill -f "llama-server -m" 2>/dev/null && echo "llama-server stopped (~5GB freed)" || echo "refine server not running"
   ;;
@@ -55,18 +55,18 @@ pull-model)
   echo "downloading Qwen2.5-7B-Instruct Q4_K_M (~4.7GB) — resumable, ctrl-C is safe"
   curl -L --retry 3 -C - -o "$REFINE_MODEL.part" "$REFINE_URL" || { echo "download failed"; exit 1; }
   mv "$REFINE_MODEL.part" "$REFINE_MODEL"
-  echo "done — restart to load it: dictate stop && dictate start"
+  echo "done — restart to load it: patter stop && patter start"
   ;;
 
 refine)
-  refine_up || { echo "llama-server not running — dictate start (or: dictate pull-model)" >&2; exit 1; }
+  refine_up || { echo "llama-server not running — patter start (or: patter pull-model)" >&2; exit 1; }
   if [ -n "$2" ]; then printf '%s' "$2"; else cat; fi | sh "$DIR/refine.sh"
   echo
   ;;
 
 start|daemon)
-  pgrep -f "dictate-daemon" >/dev/null && { echo "already running (mic icon in menu bar)"; exit 0; }
-  [ -x "$APP/Contents/MacOS/dictate-daemon" ] || { echo "not built — run: dictate build"; exit 1; }
+  pgrep -f "patter-daemon" >/dev/null && { echo "already running (mic icon in menu bar)"; exit 0; }
+  [ -x "$APP/Contents/MacOS/patter-daemon" ] || { echo "not built — run: patter build"; exit 1; }
   # servers.log had no bound at all — it is a plain >> append from three places (here,
   # the fallback loop, and the daemon's spawnServer), so it grew forever. Rotated here,
   # before the daemon starts and spawns the servers that write to it, which is the only
@@ -84,7 +84,7 @@ start|daemon)
     tail -n "+$((before+1))" "$LOG" 2>/dev/null | grep -q "capture:" && break
     sleep 0.2; i=$((i+1))
   done
-  if pgrep -f "dictate-daemon" >/dev/null; then
+  if pgrep -f "patter-daemon" >/dev/null; then
     echo "mic icon in menu bar — hold right ⌥ to dictate, right ⌘ to dictate + restructure; menu → Delete Last Dictation to erase the last paste"
     tail -n "+$((before+1))" "$LOG" | grep -E "accessibility:|input monitoring:|microphone:|capture:" \
       | sed -E 's/^[^ ]+ /  /; s/(.{100}).*/\1…/'
@@ -95,22 +95,22 @@ start|daemon)
 
 build)
   echo "compiling..."
-  swiftc -O "$DIR"/daemon/*.swift -o "$APP/Contents/MacOS/dictate-daemon" || exit 1
+  swiftc -O "$DIR"/daemon/*.swift -o "$APP/Contents/MacOS/patter-daemon" || exit 1
   codesign -s - -f "$APP" >/dev/null 2>&1 || { echo "codesign failed"; exit 1; }
-  echo "built + signed: $(du -h "$APP/Contents/MacOS/dictate-daemon" | cut -f1) binary"
+  echo "built + signed: $(du -h "$APP/Contents/MacOS/patter-daemon" | cut -f1) binary"
   # Restart only a daemon running from THIS checkout. Building in a worktree used to
   # pkill the daemon the other checkout was running and put this build in its place —
   # silently swapping the binary behind a working production setup.
-  running=$(pgrep -f "dictate-daemon" | head -1)
+  running=$(pgrep -f "patter-daemon" | head -1)
   running_app=$(ps -o command= -p "${running:-0}" 2>/dev/null)
   case "$running_app" in
     "$APP"*)
-      pkill -f "$APP/Contents/MacOS/dictate-daemon"; sleep 1; open -g "$APP"; sleep 1
+      pkill -f "$APP/Contents/MacOS/patter-daemon"; sleep 1; open -g "$APP"; sleep 1
       echo "daemon restarted" ;;
     "") ;;
     *)  echo "note: a daemon from another checkout is running and was left alone:"
         echo "      ${running_app%%/Contents*}"
-        echo "      to run THIS build instead: dictate stop && dictate start" ;;
+        echo "      to run THIS build instead: patter stop && patter start" ;;
   esac
   # Ad-hoc signing (codesign -s -) makes the designated requirement a bare cdhash,
   # which changes whenever the binary does. macOS therefore treats every rebuild as
@@ -122,11 +122,11 @@ build)
    Ad-hoc signing keys them to the binary's hash, so macOS now sees a new app.
 
    Re-grant, in this order, or the hotkey stays deaf:
-     1. dictate permissions      (resets stale entries and reopens the panes)
-     2. toggle DictateDaemon ON in Accessibility AND Input Monitoring
-     3. dictate stop && dictate start
+     1. patter permissions      (resets stale entries and reopens the panes)
+     2. toggle PatterDaemon ON in Accessibility AND Input Monitoring
+     3. patter stop && patter start
 
-   Editing the `dictate` script, jargon.txt, replacements.sed or refine.txt does
+   Editing the `patter` script, jargon.txt, replacements.sed or refine.txt does
    NOT require a rebuild and does NOT cost you the grants. Only daemon/*.swift does.
 WARN
   ;;
@@ -136,15 +136,15 @@ permissions)
   # and every step of it has burned an hour at least once.
   LS=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   echo "1. stopping daemon and System Settings"
-  pkill -f "dictate-daemon" 2>/dev/null
+  pkill -f "patter-daemon" 2>/dev/null
   killall "System Settings" 2>/dev/null
   sleep 1
 
   # A bundle registered from a deleted checkout makes System Settings bind the grant
   # to a path that no longer exists: the row never appears and no amount of
-  # re-adding helps. Any DictateDaemon.app outside this directory is stale.
+  # re-adding helps. Any PatterDaemon.app outside this directory is stale.
   echo "2. clearing stale LaunchServices registrations"
-  "$LS" -dump 2>/dev/null | grep -oE '/[^ ]*DictateDaemon\.app' | sort -u | while read -r p; do
+  "$LS" -dump 2>/dev/null | grep -oE '/[^ ]*PatterDaemon\.app' | sort -u | while read -r p; do
     case "$p" in
       "$APP") ;;
       *) echo "     unregistering stale: $p"; "$LS" -u "$p" 2>/dev/null ;;
@@ -152,9 +152,9 @@ permissions)
   done
   "$LS" -f "$APP"
 
-  echo "3. resetting TCC for com.haider.dictate"
-  tccutil reset Accessibility com.haider.dictate >/dev/null 2>&1
-  tccutil reset ListenEvent   com.haider.dictate >/dev/null 2>&1
+  echo "3. resetting TCC for com.haider.patter"
+  tccutil reset Accessibility com.haider.patter >/dev/null 2>&1
+  tccutil reset ListenEvent   com.haider.patter >/dev/null 2>&1
 
   echo "4. starting daemon (it re-registers itself in both lists)"
   open -g "$APP"; sleep 4
@@ -162,13 +162,13 @@ permissions)
   echo "5. opening the panes"
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
   echo
-  echo "   Toggle ON the row named 'DictateDaemon' in BOTH:"
+  echo "   Toggle ON the row named 'PatterDaemon' in BOTH:"
   echo "     • Accessibility     (lets it paste with ⌘V)"
   echo "     • Input Monitoring  (lets it hear the hotkey)"
   echo "   If a row is missing: + then ⌘⇧G and paste"
   echo "     $APP"
   echo
-  echo "   Then: dictate stop && dictate start    (grants are read at startup only)"
+  echo "   Then: patter stop && patter start    (grants are read at startup only)"
   ;;
 
 doctor)
@@ -183,8 +183,8 @@ doctor)
   done
   echo "assets"
   [ -f "$MODEL" ]; chk $? "model ($([ -f "$MODEL" ] && du -h "$MODEL" | cut -f1 || echo 'missing — see README'))"
-  [ -f "$REFINE_MODEL" ]; chk $? "refine model ($([ -f "$REFINE_MODEL" ] && du -h "$REFINE_MODEL" | cut -f1 || echo 'missing — dictate pull-model'))"
-  [ -x "$APP/Contents/MacOS/dictate-daemon" ]; chk $? "daemon binary (dictate build)"
+  [ -f "$REFINE_MODEL" ]; chk $? "refine model ($([ -f "$REFINE_MODEL" ] && du -h "$REFINE_MODEL" | cut -f1 || echo 'missing — patter pull-model'))"
+  [ -x "$APP/Contents/MacOS/patter-daemon" ]; chk $? "daemon binary (patter build)"
   echo "privacy"
   # core.hooksPath is local config, so a fresh clone has the hook file but not the
   # hook. Checked here because a silently inactive guard is worse than none — it
@@ -194,7 +194,7 @@ doctor)
   ! git -C "$DIR" ls-files --error-unmatch takes >/dev/null 2>&1
   chk $? "no takes/ tracked by git"
   echo "runtime"
-  pgrep -f "dictate-daemon" >/dev/null; chk $? "daemon running (dictate start)"
+  pgrep -f "patter-daemon" >/dev/null; chk $? "daemon running (patter start)"
   server_up; chk $? "whisper-server on :$PORT"
   refine_up; chk $? "llama-server on :$REFINE_PORT (right ⌘ pastes raw without it)"
   # The daemon is the only process that can observe its own TCC grants; it logs them
@@ -209,20 +209,20 @@ doctor)
     line=$(grep -i "^.*$svc:" "$LOG" 2>/dev/null | tail -1)
     # Negative cases first: "NOT trusted" contains "trusted".
     case "$line" in
-      "") printf '  ? %s — no record, run: dictate start\n' "$svc"; fail=1 ;;
+      "") printf '  ? %s — no record, run: patter start\n' "$svc"; fail=1 ;;
       *NOT\ trusted*|*DENIED*|*"not yet"*) printf '  ✗ %s\n' "$(printf '%s' "${line#* }" | cut -c1-72)"; fail=1; stale=1 ;;
       *granted*|*trusted*) printf '  ✓ %s\n' "$svc" ;;
       *) printf '  ✗ %s\n' "$(printf '%s' "${line#* }" | cut -c1-72)"; fail=1; stale=1 ;;
     esac
   done
-  [ "$stale" = 1 ] && echo "  ↻ already flipped the toggle? this snapshot predates it: dictate stop && dictate start"
+  [ "$stale" = 1 ] && echo "  ↻ already flipped the toggle? this snapshot predates it: patter stop && patter start"
   [ "$fail" = 0 ] && echo "all good" || echo "→ fix the ✗ lines above"
   exit "$fail"
   ;;
 
 format)
   # Swift only, and that is a deliberate limit rather than a stopping point.
-  # `swift format` ships INSIDE the Swift toolchain that `dictate build` already
+  # `swift format` ships INSIDE the Swift toolchain that `patter build` already
   # requires, so it is not a new dependency and invariant 2 is untouched. shfmt
   # (shell) and prettier (markdown) both would be — prettier needs a Node runtime,
   # which invariant 2 rules out outright, and it would reflow the TODO/LOG prose,
@@ -237,7 +237,7 @@ format)
       swift format --configuration "$DIR/.swift-format" "$f" | diff -q "$f" - >/dev/null \
         || { echo "  drifted: ${f#$DIR/}"; drift=1; }
     done
-    [ "$drift" = 0 ] && echo "all formatted" || echo "→ run: dictate format"
+    [ "$drift" = 0 ] && echo "all formatted" || echo "→ run: patter format"
     exit "$drift"
   fi
 
@@ -248,7 +248,7 @@ format)
       || { echo "swift format failed on ${f#$DIR/}"; exit 1; }
     [ "$(shasum "$f" | cut -d' ' -f1)" = "$before" ] || { echo "  formatted: ${f#$DIR/}"; n=$((n+1)); }
   done
-  [ "$n" = 0 ] && echo "already formatted" || echo "$n file(s) changed — rebuild with: dictate build"
+  [ "$n" = 0 ] && echo "already formatted" || echo "$n file(s) changed — rebuild with: patter build"
   ;;
 
 test)
@@ -268,12 +268,12 @@ test)
   ;;
 
 refine-test)
-  refine_up || { echo "llama-server not running — dictate start (or: dictate pull-model)"; exit 1; }
+  refine_up || { echo "llama-server not running — patter start (or: patter pull-model)"; exit 1; }
   # Keep synthetic cases out of the eval corpus. This suite calls refine.sh directly,
   # so with retention on it used to write one takes/*.pair.txt per case, named exactly
   # like a field take — which is how 7 test cases spent two days being counted as real
-  # examples in DICTATE_TODO item 15.
-  DICTATE_REFINE_TEST=1; export DICTATE_REFINE_TEST
+  # examples in PATTER_TODO item 15.
+  PATTER_REFINE_TEST=1; export PATTER_REFINE_TEST
   pass=0; fail=0
   # The passthrough floor is the safety property, so it is asserted first and by
   # identity: below the floor the text must come back byte-for-byte, because an LLM
@@ -304,7 +304,7 @@ refine-test)
   ;;
 
 bench)
-  command -v whisper-server >/dev/null || { echo "whisper-cpp not installed — run: dictate doctor"; exit 1; }
+  command -v whisper-server >/dev/null || { echo "whisper-cpp not installed — run: patter doctor"; exit 1; }
   TMP="$DIR/.bench-tmp"; mkdir -p "$TMP"
   server_up || { echo "starting whisper-server (cold load ~10s)..."
     nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >> "$SERVERLOG" 2>&1 &
@@ -365,14 +365,14 @@ log)
   ;;
 
 "")
-  [ -f "$MODEL" ] || { echo "model missing — run: dictate doctor"; exit 1; }
-  WAV="$DIR/.dictate-rec.wav"
+  [ -f "$MODEL" ] || { echo "model missing — run: patter doctor"; exit 1; }
+  WAV="$DIR/.patter-rec.wav"
   if ! server_up; then
     echo "loading model into whisper-server..."
     nohup whisper-server -m "$MODEL" --port "$PORT" --host 127.0.0.1 >> "$SERVERLOG" 2>&1 &
     until server_up; do sleep 0.2; done
   fi
-  echo "dictate ready — transcripts print here AND land on the clipboard (⌘V anywhere)"
+  echo "patter ready — transcripts print here AND land on the clipboard (⌘V anywhere)"
   while :; do
     printf '\n[Enter] record · [q] quit > '
     read -r k || exit 0; [ "$k" = "q" ] && exit 0
@@ -397,8 +397,8 @@ takes)
          echo "takes: ON — every transcribed utterance retains a .wav and pre-clean .txt"
          echo "       in $TAKES (gitignored, never committed)"
          echo "       ~290KB per take, ~67MB/day at measured usage. Nothing is ever"
-         echo "       auto-deleted; check growth with: dictate takes status"
-         echo "       off with: dictate takes off" ;;
+         echo "       auto-deleted; check growth with: patter takes status"
+         echo "       off with: patter takes off" ;;
     off) rm -f "$TAKES/.enabled"
          echo "takes: OFF — retention stopped. Everything already collected is kept." ;;
     ""|status)
@@ -420,7 +420,7 @@ takes)
          [ "$c" = "DELETE" ] || { echo "takes: cancelled, nothing deleted"; exit 0; }
          rm -f "$TAKES"/*.wav "$TAKES"/*.txt
          echo "takes: purged $n take(s). Retention is still $([ -f "$TAKES/.enabled" ] && echo ON || echo OFF)." ;;
-    *)   echo "usage: dictate takes [on|off|status|purge]"; exit 1 ;;
+    *)   echo "usage: patter takes [on|off|status|purge]"; exit 1 ;;
   esac
   ;;
 
@@ -435,7 +435,7 @@ prompting)
 
 help|-h|--help)
   cat <<'USAGE'
-dictate — hold right ⌥, speak, release, text lands at the cursor. Fully local.
+patter — hold right ⌥, speak, release, text lands at the cursor. Fully local.
           right ⌘ does the same but restructures the speech first.
           menu bar → Delete Last Dictation erases the last paste
           (until you type, click, or dictate again).
@@ -473,8 +473,8 @@ USAGE
   ;;
 
 *)
-  echo "dictate: unknown command '$1'"
-  echo "usage: dictate [start|stop|build|format|doctor|permissions|test|refine-test|bench|log|refine|prompting|takes|pull-model|help]"
+  echo "patter: unknown command '$1'"
+  echo "usage: patter [start|stop|build|format|doctor|permissions|test|refine-test|bench|log|refine|prompting|takes|pull-model|help]"
   exit 1
   ;;
 esac

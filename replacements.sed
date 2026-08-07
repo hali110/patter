@@ -3,7 +3,7 @@
 # Every rule is word-anchored with [[:<:]] / [[:>:]] (BSD sed supports these).
 # Unanchored rules corrupt real words: a bare s/[Ww]ork ?tree/worktree/ turns
 # "network tree" into "networktree". Add a case to tests/replacements.tsv for
-# every rule, then run `dictate test`.
+# every rule, then run `patter test`.
 s/[[:<:]][Pp]ixie[[:>:]]/pixi/g
 s/[[:<:]][Rr]oss ?bag[[:>:]]/rosbag/g
 s/[[:<:]][Rr]os ?two[[:>:]]/ros2/g

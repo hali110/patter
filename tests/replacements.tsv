@@ -1,6 +1,6 @@
 # raw whisper output <TAB> expected cleaned text
 # One case per replacements.sed rule, plus the near-misses each rule must NOT touch.
-# Run with: dictate test
+# Run with: patter test
 Restart the pixie environment	Restart the pixi environment
 Play the ross bag	Play the rosbag
 Play the rossbag	Play the rosbag

@@ -3,18 +3,18 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>DictateDaemon</string>
+	<string>PatterDaemon</string>
 	<key>CFBundleExecutable</key>
-	<string>dictate-daemon</string>
+	<string>patter-daemon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.haider.dictate</string>
+	<string>com.haider.patter</string>
 	<key>CFBundleName</key>
-	<string>DictateDaemon</string>
+	<string>PatterDaemon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>dictate records while you hold right Option or right Command and transcribes locally.</string>
+	<string>patter records while you hold right Option or right Command and transcribes locally.</string>
 </dict>
 </plist>

@@ -3,8 +3,8 @@ models/
 # whisper model and the 4.4GB refine model are not duplicated per branch. A
 # symlink is a file to git, so `models/` alone does not cover it.
 models
-DictateDaemon.app/Contents/MacOS/
-DictateDaemon.app/Contents/_CodeSignature/
+PatterDaemon.app/Contents/MacOS/
+PatterDaemon.app/Contents/_CodeSignature/
 daemon.log
 daemon.log.1
 .DS_Store
@@ -12,8 +12,8 @@ servers.log
 servers.log.1
 .bench-tmp/
 .probe-tmp/
-.dictate-rec.wav
-# Retained microphone audio + pre-clean transcripts (`dictate takes on`). Never
+.patter-rec.wav
+# Retained microphone audio + pre-clean transcripts (`patter takes on`). Never
 # commit these — they are raw recordings of whatever was said near the machine.
 takes/
 tcc-trace.log

@@ -22,12 +22,12 @@ else
   # ~10s per utterance because the model reloads every call. Said out loud rather than
   # letting the daemon look mysteriously slow; grep the log for "path=cli".
   echo "transcribe: whisper-server down, falling back to whisper-cli (path=cli, ~10s)" >&2
-  [ -f "$MODEL" ] || { echo "transcribe: model missing at $MODEL — run: dictate doctor" >&2; exit 1; }
+  [ -f "$MODEL" ] || { echo "transcribe: model missing at $MODEL — run: patter doctor" >&2; exit 1; }
   raw=$(whisper-cli -m "$MODEL" -f "$1" -l en --prompt "$PROMPT" -nt -np 2>/dev/null) \
     || { echo "transcribe: whisper-cli failed" >&2; exit 1; }
 fi
 
-# Retain the take for offline speech analysis, when switched on with `dictate takes on`.
+# Retain the take for offline speech analysis, when switched on with `patter takes on`.
 # Off unless takes/.enabled exists — this is the only thing in the project that persists
 # microphone audio, and that is a decision to make deliberately, not a default.
 #
@@ -49,8 +49,8 @@ if [ -f "$DIR/takes/.enabled" ]; then
   # daemon.log does, which was wrong: a log line is regenerable and a recording is not.
   # Silently deleting a take the user believed was kept is the same failure class as
   # silently eating an utterance, which CLAUDE.md calls the worst bug this project has.
-  # Growth is ~67MB/day at measured usage; `dictate takes status` reports size, and
-  # deleting is an explicit `dictate takes purge`.
+  # Growth is ~67MB/day at measured usage; `patter takes status` reports size, and
+  # deleting is an explicit `patter takes purge`.
 fi
 
 printf '%s' "$raw" | sh "$DIR/clean.sh"

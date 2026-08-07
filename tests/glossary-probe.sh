@@ -21,7 +21,7 @@ TMP="$DIR/.probe-tmp"; mkdir -p "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
 curl -s -o /dev/null --max-time 0.3 "http://127.0.0.1:$PORT/" \
-  || { echo "whisper-server not up on :$PORT — run: dictate start" >&2; exit 1; }
+  || { echo "whisper-server not up on :$PORT — run: patter start" >&2; exit 1; }
 
 say -o "$TMP/probe.aiff" "Ask Wattson to align the tyler zero one feeder"
 afconvert -f WAVE -d LEI16@16000 -c 1 "$TMP/probe.aiff" "$TMP/probe.wav"
