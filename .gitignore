@@ -26,3 +26,10 @@ servers.log.1
 # commit these — they are raw recordings of whatever was said near the machine.
 takes/
 tcc-trace.log
+# The design record and working notes. Kept LOCAL, not published: they interleave
+# genuinely useful technical reasoning with verbatim transcripts of real
+# conversations — including other people who never agreed to be published — and
+# with client detail. CLAUDE.md is the public design record; these are the raw one.
+# They are still the working files: edit and rely on them exactly as before.
+*_LOG.md
+*_TODO.md

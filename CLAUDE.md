@@ -32,7 +32,7 @@ Break one of these and it is no longer this project.
    for putting a second job **on the hot path**, and got used 11 times against ⌥'s
    164 on its first day. Worded this way the invariant still rejects every example
    it rejected before, while permitting `patter prompting` and the offline speech
-   analysis in `SPEECH_TODO.md`, which had been formally in violation since
+   analysis planned in the maintainer's local notes, which had been formally in violation since
    2026-07-29 despite being unable to touch the hot path. Deleting the invariant
    outright was considered and refused: that would have discarded the discipline to
    buy something the rescope gives for free.
@@ -430,19 +430,34 @@ differently on every machine. It therefore tests the shared baseline, which is t
 only part a pull request can change.
 
 `patter refine-test` runs `tests/refine.tsv` through `refine.sh` against the live
-7B, plus four short-input passthrough assertions. It **carries exactly two deliberate
-red cases** and is expected to report `13 passed, 2 failed`; both reds are regression
-markers for known model defects, documented in PATTER_TODO items 16a and 29. Do not
-delete them to get a green suite, and keep the expected count here current — stating
-it is what stops a *third* red hiding among the two. It exports
-`PATTER_REFINE_TEST=1` so its cases are kept out of `takes/` — a synthetic pair in
-the eval corpus is worse than no pair.
+7B, plus four short-input passthrough assertions. It **carries exactly one deliberate
+red case** and is expected to report `14 passed, 1 failed`; that red is a regression
+marker for a known model defect. Do not delete it to get a green suite, and keep the
+expected count here current — stating it is what stops a *second* red hiding behind
+the first. It exports `PATTER_REFINE_TEST=1` so its cases are kept out of `takes/` —
+a synthetic pair in the eval corpus is worse than no pair.
 
-Three of the green cases are **real field pairs that used to fail**: the old prompt
-dropped a person's name ("For Alex"), fabricated `Fix the job selection…` out of a
-pure status report, and converted two questions into imperatives. They lock in a
-measured fix rather than marking a defect, and they are the reason `refine.txt` rules
-3, 4 and 5 are worded the way they are.
+**It used to be `13 passed, 2 failed`, and the second red was lost to publishing the
+repo — that is a real cost, recorded rather than quietly absorbed.** The long-input
+red was a 398-word field take where the 7B dropped a load-bearing causal claim and
+inverted a self-correction. It could not be published: it was a recording of a
+private two-person conversation. The synthetic replacement keeps the shape that
+provoked it — long thinking-out-loud, one causal claim, one self-correction — and the
+model **handles it correctly**, so the marker no longer fires. Two consequences.
+Nothing now guards the long-input preservation defect, so a prompt or model change
+that worsens it will pass silently. And the general lesson: **a regression marker
+built from real data cannot always be reconstructed synthetically**, because what
+made it fail was the specific text, not the shape. Re-measured rather than assumed —
+the first attempt at the replacement also failed, but on a badly designed assertion
+rather than the defect, which is exactly the trap of writing a test to a count.
+
+Two green cases are still **real field pairs that used to fail**: the old prompt
+fabricated `Fix the job selection…` out of a pure status report, and converted two
+questions into imperatives. They lock in a measured fix rather than marking a defect,
+and they are the reason `refine.txt` rules 3 and 4 are worded the way they are. Rule
+5's case (a person's name is content) is now **synthetic**, for the same publishing
+reason, and is marked as such in the file — a synthetic case is weaker evidence about
+what the model does to real speech, and the suite says so rather than pretending.
 
 `tests/glossary-probe.sh` is the only test that touches whisper. It guards the
 recency rule with `say`-synthesized audio and must print **all 6 as expected**.

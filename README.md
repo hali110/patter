@@ -102,8 +102,8 @@ CI runs `patter test` and `patter format --check` on every pull request. It cann
 run `patter refine-test`, `tests/glossary-probe.sh` or `patter bench`: those need
 4.4GB of resident weights, a live `whisper-server`, and stable hardware respectively.
 **Run them locally before opening a PR that touches the model paths or `jargon.txt`.**
-`patter refine-test` is expected to report `13 passed, 2 failed` — both reds are
-deliberate regression markers, documented in `PATTER_TODO.md`.
+`patter refine-test` is expected to report `14 passed, 1 failed` — the red is a
+deliberate regression marker for a known model defect.
 
 `CLAUDE.md` is the design record: four invariants, a measured latency budget, and the
 macOS platform lore that costs hours to re-derive. Read it before changing the hot

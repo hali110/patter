@@ -1,0 +1,50 @@
+# input <TAB> must contain (;-separated) <TAB> must NOT contain (;-separated)
+#
+# Property assertions, not exact strings: the output of a 7B model is not a stable
+# fixture and would have to be rewritten on every model or prompt change, which is
+# how a suite stops being run. What must hold is that requirements survive and
+# filler does not. Run with: patter refine-test
+#
+# PROVENANCE. Cases here were originally real dictated speech. When the repo was
+# published, the two that carried private content — a recorded two-person
+# conversation and a case naming a third party — were replaced with SYNTHETIC input
+# written to exercise the same property. They are marked below. Everything else is
+# unchanged. This matters because CLAUDE.md's rule for takes/ is that field data and
+# synthetic data must never be confused; the same honesty applies here, and a
+# synthetic case is weaker evidence than a field one about what the model does to
+# real speech.
+#
+# Requirements must survive the rewrite. Dropping one is the only unacceptable failure.
+okay so can you like look at the thing, the glossary thing, and uh actually no first check the tests, then do the glossary one, and don't touch main obviously	tests;glossary;main	 um ; uh ;actually no
+And then can you change my status line so it tells me how many, like it tells me the number of files that are not committed, staged, blah, blah, next to my branch name.	status line;branch	blah;like it tells
+I want you to please maybe look at the daemon log and um tell me if there were any dropped utterances that were actually real speech	daemon log;dropped	please;maybe; um
+# Self-correction: the retracted half must not survive, the replacement must.
+so run the tests on tyler00, no wait, tyler01, and then restart the rosbag there	tyler01;rosbag	tyler00
+# Technical nouns are quoted verbatim by rule 6 — a rewritten flag is a broken command.
+can you like run git reset --hard origin/main and then uh npm run app -- --port 3000 for me	git reset --hard origin/main;npm run app -- --port 3000	 like ; uh
+so the thing is I need you to check the CLAUDE.md file and also the replacements.sed rules for anchoring	CLAUDE.md;replacements.sed	I need you to
+# Never wrap the result in formatting — this text is typed into the focused document.
+just go ahead and write up a short summary of everything we did today in the log file	summary	```;"
+# SYNTHETIC, replacing a private field take. KNOWN RED status is NOT inherited —
+# see the count recorded in CLAUDE.md, which was re-measured against this input.
+# The original was a 398-word right-cmd take of 2026-07-31, the day long-form use
+# started; the 7B held the preservation frame on ~30s takes and lost it there,
+# dropping a load-bearing causal claim and inverting a self-correction. This
+# replacement keeps the shape that provoked it: long thinking-out-loud, one causal
+# claim that must survive, one self-correction whose retracted half must not.
+so I have been going back and forth on how the cache should work and I think I finally have it straight in my head, the thing is that right now every single request goes out to the index and that is fine when the index is small but the moment it grows past a few hundred thousand rows the latency is just not acceptable anymore, and people notice, they really notice, they start complaining that search feels slow even when the results are good. So what I want to do is put a layer in front of it, and originally I thought we should cache the rendered results, no wait, that is wrong, we should cache the query plan and not the rendered results, because the rendered results go stale the moment anyone edits a document and then we are serving wrong data which is worse than being slow. The query plan is stable for much longer. And here is the part that actually matters, if we cache the plan then we get better tail latency, and better tail latency is what people actually perceive as the product being fast, not the median, the median is already fine. Nobody has ever complained about the median. They complain about the one request in fifty that takes two seconds. So the win is not average speed at all, it is consistency. We could expand this later to the suggestion endpoint too, and maybe the typeahead, although typeahead has its own problems because it fires on every keystroke and I do not think a plan cache helps there, that probably needs debouncing instead. Anyway I think this is getting a bit broad, let me pull it back. The concrete thing I want is a plan cache in front of the index, keyed on the normalised query, with a short time to live so that a schema change cannot poison it for long. That is the whole proposal really.	better tail latency;query plan
+# Real field pairs from 2026-07-29, added 08-01. FAILED under the old refine.txt and
+# pass under the current one, so they lock in a measured fix rather than marking a
+# defect. Each targets the specific rule that was being broken.
+# Rule 5 — a person's name is content. The old prompt dropped the name entirely.
+# SYNTHETIC, replacing a private field take that named a third party. Same shape:
+# a name, two numeric targets, and a deadline, all of which must survive.
+For Priya, we want manual panel placement at 2 units per minute. We want 100 units placed. And both of these goals I want to do by the end of the week.	Priya;100
+# Rules 3 and 4 — a status report is complete on its own. The old prompt invented
+# "Fix the job selection to use grid mode instead of thirds mode." out of it,
+# which is the fabrication that caused the rewrite in the first place.
+All the bags from yesterday and today have been grid mode, but I accidentally had thirds mode as the job selected.	grid mode;thirds mode	Fix the job
+# Rule 4 — a question stays a question. The old prompt turned both of these into
+# imperatives ("Tag flashcards for review. Check the translations for accuracy."),
+# which also silently changed what the second one was asking.
+Is there a way to like tag flashcards so that I can go back and review them? Where did you get the translations for? Because I feel like one of them might be a little bit off.	?;translations	Tag flashcards for review
