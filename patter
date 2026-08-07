@@ -11,6 +11,21 @@ MODEL="$DIR/models/ggml-large-v3-turbo.bin"
 REFINE_MODEL="$DIR/models/refine-q4.gguf"
 REFINE_URL="https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 APP="$DIR/PatterDaemon.app"
+# Every checkout gets its own bundle identifier. TCC keys a grant on the identifier,
+# and two bundles claiming one identifier is exactly the state that makes an
+# Accessibility grant unfixable — the row never appears no matter how many times you
+# re-add it (macOS notes in CLAUDE.md; it cost an hour on 2026-07-29). A worktree, or
+# a contributor's clone sitting next to main, is now the normal case rather than the
+# exception, so this cannot stay a manual step that someone remembers to do.
+#
+# Seeded from the checkout path but STORED, not recomputed: `.bundle-id` freezes the
+# value at first build so that moving the checkout does not silently orphan the grant.
+# "No absolute paths" is an invariant and a path-derived identity would have broken it.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+BUNDLE_ID_FILE="$DIR/.bundle-id"
+# Read-only on purpose — only `patter build` may mint one, so `patter test` in CI
+# leaves no untracked file behind.
+bundle_id() { [ -f "$BUNDLE_ID_FILE" ] && cat "$BUNDLE_ID_FILE"; }
 LOG="$DIR/daemon.log"
 # Everything this tool produces stays inside the checkout — logs, scratch audio,
 # models. Nothing in /tmp: a server that dies at load leaves its reason in a file
@@ -94,6 +109,16 @@ start|daemon)
   ;;
 
 build)
+  # The bundle is generated, not committed: a checked-in Info.plist would ship one
+  # person's identifier to every clone. mkdir because a fresh clone has no .app at all.
+  mkdir -p "$APP/Contents/MacOS"
+  if [ ! -f "$BUNDLE_ID_FILE" ]; then
+    printf 'io.github.hali110.patter.%s\n' "$(printf '%s' "$DIR" | shasum | cut -c1-8)" \
+      > "$BUNDLE_ID_FILE" || exit 1
+    echo "minted bundle id for this checkout: $(bundle_id)"
+    echo "  (grants are keyed to it — run 'patter permissions' after this build)"
+  fi
+  sed "s|@BUNDLE_ID@|$(bundle_id)|" "$DIR/daemon/Info.plist.in" > "$APP/Contents/Info.plist" || exit 1
   echo "compiling..."
   swiftc -O "$DIR"/daemon/*.swift -o "$APP/Contents/MacOS/patter-daemon" || exit 1
   codesign -s - -f "$APP" >/dev/null 2>&1 || { echo "codesign failed"; exit 1; }
@@ -134,27 +159,33 @@ WARN
 permissions)
   # One command for the whole re-grant dance, because it has to be done in order
   # and every step of it has burned an hour at least once.
-  LS=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   echo "1. stopping daemon and System Settings"
   pkill -f "patter-daemon" 2>/dev/null
   killall "System Settings" 2>/dev/null
   sleep 1
 
   # A bundle registered from a deleted checkout makes System Settings bind the grant
-  # to a path that no longer exists: the row never appears and no amount of
-  # re-adding helps. Any PatterDaemon.app outside this directory is stale.
+  # to a path that no longer exists: the row never appears and no amount of re-adding
+  # helps. The ghost is the *dead path*, not the sibling — now that every checkout
+  # mints its own identifier, another live checkout is legitimate and is left alone.
+  # Deleting it here was the old behaviour and would now destroy a working grant.
   echo "2. clearing stale LaunchServices registrations"
-  "$LS" -dump 2>/dev/null | grep -oE '/[^ ]*PatterDaemon\.app' | sort -u | while read -r p; do
-    case "$p" in
-      "$APP") ;;
-      *) echo "     unregistering stale: $p"; "$LS" -u "$p" 2>/dev/null ;;
-    esac
+  "$LSREGISTER" -dump 2>/dev/null | grep -oE '/[^ ]*PatterDaemon\.app' | sort -u | while read -r p; do
+    if [ ! -d "$p" ]; then
+      echo "     unregistering dead path: $p"; "$LSREGISTER" -u "$p" 2>/dev/null
+    elif [ "$p" != "$APP" ] \
+      && [ "$(defaults read "$p/Contents/Info" CFBundleIdentifier 2>/dev/null)" = "$(bundle_id)" ]; then
+      # Cannot happen via `patter build`; reachable by copying a checkout wholesale,
+      # .bundle-id and all. Loud, because this is the unfixable-grant state itself.
+      echo "     ✗ ANOTHER LIVE BUNDLE CLAIMS $(bundle_id): $p" >&2
+      echo "       delete that checkout's .bundle-id and rebuild it, or grants will fight." >&2
+    fi
   done
-  "$LS" -f "$APP"
+  "$LSREGISTER" -f "$APP"
 
-  echo "3. resetting TCC for com.haider.patter"
-  tccutil reset Accessibility com.haider.patter >/dev/null 2>&1
-  tccutil reset ListenEvent   com.haider.patter >/dev/null 2>&1
+  echo "3. resetting TCC for $(bundle_id)"
+  tccutil reset Accessibility "$(bundle_id)" >/dev/null 2>&1
+  tccutil reset ListenEvent   "$(bundle_id)" >/dev/null 2>&1
 
   echo "4. starting daemon (it re-registers itself in both lists)"
   open -g "$APP"; sleep 4
@@ -185,6 +216,16 @@ doctor)
   [ -f "$MODEL" ]; chk $? "model ($([ -f "$MODEL" ] && du -h "$MODEL" | cut -f1 || echo 'missing — see README'))"
   [ -f "$REFINE_MODEL" ]; chk $? "refine model ($([ -f "$REFINE_MODEL" ] && du -h "$REFINE_MODEL" | cut -f1 || echo 'missing — patter pull-model'))"
   [ -x "$APP/Contents/MacOS/patter-daemon" ]; chk $? "daemon binary (patter build)"
+  [ -n "$(bundle_id)" ]; chk $? "bundle id ($([ -n "$(bundle_id)" ] && bundle_id || echo 'unset — patter build mints one'))"
+  # Two live bundles on one identifier is the unfixable-grant state. Counted here
+  # rather than assumed, because the symptom (no row in Privacy) looks like anything.
+  dupes=0
+  for p in $("$LSREGISTER" -dump 2>/dev/null | grep -oE '/[^ ]*PatterDaemon\.app' | sort -u); do
+    [ -d "$p" ] || continue
+    [ "$(defaults read "$p/Contents/Info" CFBundleIdentifier 2>/dev/null)" = "$(bundle_id)" ] \
+      && dupes=$((dupes+1))
+  done
+  [ "$dupes" -le 1 ]; chk $? "bundle id is unique on this machine ($dupes live bundle(s) claim it)"
   echo "privacy"
   # core.hooksPath is local config, so a fresh clone has the hook file but not the
   # hook. Checked here because a silently inactive guard is worse than none — it
@@ -226,7 +267,7 @@ format)
   # requires, so it is not a new dependency and invariant 2 is untouched. shfmt
   # (shell) and prettier (markdown) both would be — prettier needs a Node runtime,
   # which invariant 2 rules out outright, and it would reflow the TODO/LOG prose,
-  # which is the project's記録 rather than formattable text.
+  # which is the project's record rather than formattable text.
   command -v swift >/dev/null || { echo "swift toolchain not found — this ships with Xcode / Command Line Tools"; exit 1; }
   swift format --version >/dev/null 2>&1 || { echo "this Swift toolchain has no 'swift format' (needs 5.8+); yours: $(swift --version 2>&1 | head -1)"; exit 1; }
   [ -f "$DIR/.swift-format" ] || { echo ".swift-format missing — refusing to format with defaults, which rewrite the whole daemon"; exit 1; }

@@ -1,0 +1,28 @@
+# What CI can honestly check, and nothing more.
+#
+# `patter test` runs tests/replacements.tsv through clean.sh — pure shell and sed,
+# no model, no audio, no Swift — so it is fully reproducible on a runner.
+# `patter format --check` needs the Swift toolchain, which macOS runners ship.
+#
+# DELIBERATELY NOT RUN HERE, and a green tick must not be read as covering them:
+#   patter refine-test        needs the resident 7B on :8091 (4.4GB of weights)
+#   tests/glossary-probe.sh   needs whisper-server and synthesises audio with `say`
+#   patter bench              measures this machine; a shared runner's numbers are noise
+# Those three are the ones that exercise the model paths. CI covers the deterministic
+# text pipeline only — which is most of what a pull request touches, and none of what
+# a jargon reorder touches.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: replacement suite (clean.sh, no model)
+        run: ./patter test
+      - name: swift formatting
+        run: ./patter format --check

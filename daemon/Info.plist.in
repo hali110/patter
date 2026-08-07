@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Rendered to PatterDaemon.app/Contents/Info.plist by `patter build`. The bundle
+     identifier is per-checkout and therefore not committed — see `bundle_id` in the
+     `patter` script for why two checkouts must never share one. Edit this file, not
+     the generated one; the generated one is gitignored and overwritten every build. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -7,7 +11,7 @@
 	<key>CFBundleExecutable</key>
 	<string>patter-daemon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.haider.patter</string>
+	<string>@BUNDLE_ID@</string>
 	<key>CFBundleName</key>
 	<string>PatterDaemon</string>
 	<key>CFBundlePackageType</key>

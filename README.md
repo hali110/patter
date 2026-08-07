@@ -44,7 +44,11 @@ Menu bar icon: mic = idle, filled = recording, ellipsis = transcribing.
 4. `patter build && patter start`
 5. Grant the two permissions it asks for, then `patter doctor` until it prints
    `all good`.
-6. `git config blame.ignoreRevsFile .git-blame-ignore-revs` — per clone. The daemon
+6. `git config core.hooksPath .githooks` — per clone. `.gitignore` is the fence; the
+   pre-commit hook is the lock, and it refuses to commit recordings or logs. A
+   `git add -f` or a stray `git add -A` defeats an ignore rule, and a recording
+   committed once is in history permanently. `patter doctor` checks this is wired.
+7. `git config blame.ignoreRevsFile .git-blame-ignore-revs` — per clone. The daemon
    was reformatted wholesale once, and without this `git blame` on `Recorder.swift`
    or `main.swift` attributes the TCC, AirPods-pin and tap-deafness knowledge to
    that commit instead of the commit that learned it.
@@ -65,9 +69,31 @@ terminal child it is attributed to the terminal and the grants are ignored.
 
 ## Tuning
 
-- `jargon.txt` — vocabulary bias fed to whisper as a decode prompt. Bias is
-  recency-weighted: **put the most important terms last, and keep the list short.**
+- `jargon.local.txt` — **your own vocabulary goes here**, not in `jargon.txt`. It is
+  gitignored and appended after the shared list, so your terms take the slots that
+  actually work without evicting anyone else's. Create it and start typing; one term
+  per line or one comma-separated line, `#` comments are stripped.
+- `jargon.txt` — the *shared* vocabulary bias fed to whisper as a decode prompt. Bias
+  is recency-weighted: **put the most important terms last, and keep the list short.**
   Only about the last 15 terms have any effect, and a term whisper already gets
-  right wastes one of those slots. Measured, not folklore — see CLAUDE.md.
+  right wastes one of those slots. Measured, not folklore — see CLAUDE.md. Because
+  those slots are finite, editing this file is a review question — an appended term
+  silently pushes someone else's out of range. That is what `jargon.local.txt` is for.
 - `replacements.sed` — deterministic fixes for recurring mishears. Word-anchor every
   rule and add a case to `tests/replacements.tsv`, then `patter test`.
+
+## Contributing
+
+MIT licensed — see [LICENSE](LICENSE).
+
+CI runs `patter test` and `patter format --check` on every pull request. It cannot
+run `patter refine-test`, `tests/glossary-probe.sh` or `patter bench`: those need
+4.4GB of resident weights, a live `whisper-server`, and stable hardware respectively.
+**Run them locally before opening a PR that touches the model paths or `jargon.txt`.**
+`patter refine-test` is expected to report `13 passed, 2 failed` — both reds are
+deliberate regression markers, documented in `PATTER_TODO.md`.
+
+`CLAUDE.md` is the design record: four invariants, a measured latency budget, and the
+macOS platform lore that costs hours to re-derive. Read it before changing the hot
+path — most of what looks like an easy improvement is already in "Deliberately not
+doing", with the measurement that put it there.

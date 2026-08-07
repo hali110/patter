@@ -8,6 +8,13 @@ MODEL="$DIR/models/ggml-large-v3-turbo.bin"
 # bias is recency-weighted (most important term LAST) is too surprising to leave undocumented
 # at the point of edit, and anything not stripped here would become part of the prompt.
 PROMPT="$(grep -v '^#' "$DIR/jargon.txt")"
+# Per-user overlay, gitignored, appended LAST and therefore highest-bias. The shared
+# glossary cannot simply grow to fit everyone: bias is recency-weighted and only the
+# last ~15 terms do anything, so one contributor adding their vocabulary to jargon.txt
+# would silently evict another's. Appending instead means your own terms take the live
+# slots on your machine and nobody else's file has to change. Absent, nothing differs.
+[ -f "$DIR/jargon.local.txt" ] && PROMPT="$PROMPT
+$(grep -v '^#' "$DIR/jargon.local.txt")"
 
 if [ ! -f "$1" ]; then
   echo "transcribe: no such audio file: $1" >&2
