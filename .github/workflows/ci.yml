@@ -21,7 +21,7 @@ jobs:
   checks:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: replacement suite (clean.sh, no model)
         run: ./patter test
       - name: swift formatting
