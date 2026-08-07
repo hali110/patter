@@ -55,7 +55,8 @@ Menu bar icon: mic = idle, filled = recording, ellipsis = transcribing.
 3. `ln -s "$PWD/patter" /opt/homebrew/bin/patter`
 4. `patter build && patter start`
 5. Grant the two permissions it asks for, then `patter doctor` until it prints
-   `all good`.
+   `all good`. It checks every dependency, process and permission, and each failing
+   line names its own fix — reach for it before debugging anything by hand.
 6. `git config core.hooksPath .githooks` — per clone. `.gitignore` is the fence; the
    pre-commit hook is the lock, and it refuses to commit recordings or logs. A
    `git add -f` or a stray `git add -A` defeats an ignore rule, and a recording
@@ -78,6 +79,39 @@ re-toggle the checkboxes. `patter doctor` tells you which one is missing.
 The daemon must be launched by `patter start`, which uses `open -g`
 (LaunchServices) so the process is its own TCC responsible process. Started as a
 terminal child it is attributed to the terminal and the grants are ignored.
+
+## Troubleshooting
+
+**"I built it and the hotkey does nothing."** Almost always the grants, and it is not
+a bug. `patter build` re-signs the daemon; the app is ad-hoc signed, so macOS keys the
+permission to a hash that changes with every binary and treats each build as a brand
+new app. The old grant is orphaned and **the hotkey goes deaf with no error message
+anywhere**. Fix: `patter permissions`, toggle `PatterDaemon` on in *both*
+Accessibility and Input Monitoring, then `patter stop && patter start`. Expect to do
+this after every rebuild until someone wires up a real code-signing certificate.
+
+**"The checkbox is on but `doctor` says not trusted."** Grants are read once, at daemon
+startup. Restart it: `patter stop && patter start`.
+
+**"System Settings shows no row for PatterDaemon."** The Privacy list is a renderer
+over the TCC database, not the database — the grant can be fully live with no row
+drawn. Never debug this from the UI. `patter doctor` reports
+`AXIsProcessTrusted()` from inside the daemon, which is the only ground truth.
+
+**"It pastes into the wrong place, or not at all."** If Accessibility is missing, the
+transcript is left on the clipboard instead and the log says so — ⌘V manually. Check
+`patter log`.
+
+**"A transcript took ten seconds."** The resident model died and it silently fell back
+to `whisper-cli`. Look for `path=cli` in `patter log`, then `patter stop && patter start`.
+
+**"It hears me wrong."** Two different fixes, and picking the wrong one makes things
+worse — see Tuning above. A mishear whose wrong form is not real English goes in
+`replacements.sed`; one that collides with real English has to go in the glossary.
+
+**Everything else:** `patter doctor` first, `patter log` second. The log carries one
+line per utterance with per-stage timings, and it is the only debugging surface a
+menu-bar daemon has.
 
 ## Tuning
 
@@ -105,7 +139,24 @@ run `patter refine-test`, `tests/glossary-probe.sh` or `patter bench`: those nee
 `patter refine-test` is expected to report `14 passed, 1 failed` — the red is a
 deliberate regression marker for a known model defect.
 
-`CLAUDE.md` is the design record: four invariants, a measured latency budget, and the
-macOS platform lore that costs hours to re-derive. Read it before changing the hot
-path — most of what looks like an easy improvement is already in "Deliberately not
-doing", with the measurement that put it there.
+**Read [CLAUDE.md](CLAUDE.md) before changing anything** — start with its "Working on
+this repo" section, which is a page long and tells you which test to run for which
+change, and what will bite you. The rest is the design record: four invariants, a
+measured latency budget, and the macOS platform lore that costs hours to re-derive.
+Most of what looks like an easy improvement is already in "Deliberately not doing",
+with the measurement that rejected it.
+
+That file is also the instructions for **Claude Code and other coding agents** — it is
+what they load automatically in this repo, so it is written to be read by either. If
+you work with an agent here, you do not need to brief it on the project's rules; point
+it at a task and it will already know that a runtime dependency is an invariant
+violation, that a rebuild costs you the permission grants, and that `jargon.txt` is
+recency-weighted and length-capped.
+
+Two things that are easy to get wrong and cheap to get right:
+
+- **Design reasoning goes in the commit message**, and anything durable goes into
+  CLAUDE.md next to the claim it extends. There is no design-docs directory.
+- **`takes/` is never committed.** It is raw microphone audio. `.gitignore` is the
+  fence and the pre-commit hook is the lock — wire it (setup step 6), because a
+  recording committed once is in history permanently.

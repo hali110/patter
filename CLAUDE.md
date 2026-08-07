@@ -3,6 +3,55 @@
 Hold right ⌥ anywhere on macOS, speak, release, text lands at the cursor. Fully
 local. That is the entire product.
 
+## Working on this repo — start here
+
+Written for whoever is about to change something, human or agent. The rest of this
+file is *why*; this section is *how*.
+
+**Run `patter doctor` first, and after anything surprising.** It checks every binary,
+model, server, permission and privacy guard, and each failing line names its own fix.
+It is faster than reasoning about what broke, and its permission readings come from
+inside the daemon, which is the only ground truth (see macOS notes).
+
+**Run the test that matches what you touched.** They cover different things and none
+of them covers everything:
+
+| You changed | Run | Expect |
+|---|---|---|
+| `replacements.sed`, `clean.sh` | `patter test` | `80 passed, 0 failed` |
+| `jargon.txt` — *any* edit to length or order | `tests/glossary-probe.sh` | `all 6 as expected` |
+| `refine.txt`, `refine.sh` | `patter refine-test` | `14 passed, 1 failed` |
+| `daemon/*.swift` | `patter format --check`, then `patter build` | `all formatted` |
+| anything on the hot path | `patter bench` | inside the budget table below |
+
+Three of those need things CI cannot have — 4.4GB of weights, a live `whisper-server`,
+stable hardware — so **CI green does not mean the suite passed.** Run them locally.
+The `14 passed, 1 failed` is correct: one red is a deliberate regression marker, and
+stating the number here is what stops a *second* red hiding behind it.
+
+**`patter build` invalidates your Accessibility and Input Monitoring grants**, every
+time, because the app is ad-hoc signed and TCC keys it to a hash that changes with the
+binary. The hotkey then goes deaf **with no error anywhere** — that is the single most
+common "it's broken" report, and it is not a bug in the code. Re-grant with
+`patter permissions`. Do not rebuild casually while debugging something else.
+
+**What is not in this repo.** The maintainer's working notes (`*_LOG.md`,
+`*_TODO.md`) are gitignored and local — they carry verbatim transcripts of real
+conversations. Do not look for them, do not recreate them, and do not treat their
+absence as missing documentation: **this file is the design record.** Reasoning behind
+a change goes in the commit message, and anything durable belongs here, in the section
+it contradicts or extends. `takes/` is a corpus of real recordings and is never
+committed; a pre-commit hook enforces that if you wired it (setup step 6).
+
+**Your own vocabulary goes in `jargon.local.txt`, never `jargon.txt`.** The shared
+glossary is a fixed-size resource — only about the last 15 terms do anything — so an
+appended term silently disables someone else's. See the Rules section.
+
+**Before proposing a change to the hot path, read "Deliberately not doing" at the
+bottom.** Streaming, a smaller model, an always-hot mic and an LLM cleanup pass on
+right ⌥ are all already rejected, each with the measurement that rejected it. Adding a
+runtime dependency is an invariant violation, not a trade-off.
+
 ## Invariants
 
 Break one of these and it is no longer this project.
