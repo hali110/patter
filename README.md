@@ -9,6 +9,13 @@ utterance. No cloud, no telemetry.
 written request — ~700ms–1.8s end to end. Right ⌥ is unchanged and never touches
 the model. Both texts go to `daemon.log`.
 
+**It stays out of your clipboard history.** Pasting is done by writing the pasteboard
+and posting ⌘V, so the previous clipboard contents are saved and restored 0.5s later.
+Both writes are marked with the [nspasteboard.com](http://nspasteboard.com) transient
+and auto-generated types, which Maccy, Paste and Alfred all honour, so dictating does
+not fill your clipboard manager with transcripts — or bump your real clipboard entry
+back to the top when it restores.
+
 **Delete Last Dictation** in the menu bar removes what was just pasted — it
 backspaces the exact text, and disarms itself (item greys out) the moment you
 type, click, or dictate again so it can never eat anything else.
@@ -30,7 +37,12 @@ Project rules and the latency budget live in [CLAUDE.md](CLAUDE.md).
 | `patter format` | run `swift format` over the daemon (`--check` exits 1 on drift) |
 | `patter bench` | print the latency table |
 | `patter log` | follow `daemon.log` |
+| `patter permissions` | the Accessibility / Input Monitoring re-grant dance, one command |
+| `patter takes [on\|off\|status\|purge]` | retain audio + raw transcripts for offline analysis (off by default, never auto-deleted) |
+| `patter prompting [--split]` | measure prompting quality over time from session logs |
 | `patter` | terminal fallback: Enter records, Enter stops, transcript → stdout + clipboard |
+
+`patter help` is the authoritative list; the table above is the tour.
 
 Menu bar icon: mic = idle, filled = recording, ellipsis = transcribing.
 

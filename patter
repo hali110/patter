@@ -1,10 +1,9 @@
 #!/bin/sh
 # patter — local hold-to-talk dictation for macOS. See CLAUDE.md for the rules.
 #
-#   patter start | stop | build | format | doctor | test | bench | log
-#   patter refine [text] restructure text through the local LLM (stdin if no arg)
-#   patter pull-model    download the ~4.7GB refine model
-#   patter                terminal fallback loop (Enter records, Enter stops)
+# Commands are listed in one place only — `patter help`, at the bottom of this file.
+# This header used to carry its own copy and had drifted to 8 of the 15 real ones,
+# silently, because nothing can fail when a comment goes stale. A pointer cannot.
 SRC="$0"; [ -L "$SRC" ] && SRC="$(readlink "$SRC")"
 DIR="$(cd "$(dirname "$SRC")" && pwd)"
 MODEL="$DIR/models/ggml-large-v3-turbo.bin"
