@@ -13,7 +13,7 @@ APP="$DIR/PatterDaemon.app"
 # Every checkout gets its own bundle identifier. TCC keys a grant on the identifier,
 # and two bundles claiming one identifier is exactly the state that makes an
 # Accessibility grant unfixable — the row never appears no matter how many times you
-# re-add it (macOS notes in CLAUDE.md; it cost an hour on 2026-07-29). A worktree, or
+# re-add it (macOS notes in docs/DESIGN.md; it cost an hour on 2026-07-29). A worktree, or
 # a contributor's clone sitting next to main, is now the normal case rather than the
 # exception, so this cannot stay a manual step that someone remembers to do.
 #

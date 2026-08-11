@@ -122,7 +122,7 @@ menu-bar daemon has.
 - `jargon.txt` — the *shared* vocabulary bias fed to whisper as a decode prompt. Bias
   is recency-weighted: **put the most important terms last, and keep the list short.**
   Only about the last 15 terms have any effect, and a term whisper already gets
-  right wastes one of those slots. Measured, not folklore — see CLAUDE.md. Because
+  right wastes one of those slots. Measured, not folklore — see docs/DESIGN.md. Because
   those slots are finite, editing this file is a review question — an appended term
   silently pushes someone else's out of range. That is what `jargon.local.txt` is for.
 - `replacements.sed` — deterministic fixes for recurring mishears. Word-anchor every
@@ -139,12 +139,15 @@ run `patter refine-test`, `tests/glossary-probe.sh` or `patter bench`: those nee
 `patter refine-test` is expected to report `14 passed, 1 failed` — the red is a
 deliberate regression marker for a known model defect.
 
-**Read [CLAUDE.md](CLAUDE.md) before changing anything** — start with its "Working on
-this repo" section, which is a page long and tells you which test to run for which
-change, and what will bite you. The rest is the design record: four invariants, a
-measured latency budget, and the macOS platform lore that costs hours to re-derive.
-Most of what looks like an easy improvement is already in "Deliberately not doing",
-with the measurement that rejected it.
+**Read [CLAUDE.md](CLAUDE.md) before changing anything** — it is short on purpose, and
+it is the standing rules: which test to run for which change, four invariants, a
+measured latency budget, and what will bite you. Start with its "Start here" section.
+
+**The evidence is in [docs/DESIGN.md](docs/DESIGN.md)** — the measurements behind each
+rule, the alternatives already tried and rejected, and the macOS platform lore that
+costs hours to re-derive. You do not need it to make a change; you need it before
+arguing with a rule. Most of what looks like an easy improvement is already in
+"Deliberately not doing", with the measurement that rejected it.
 
 That file is also the instructions for **Claude Code and other coding agents** — it is
 what they load automatically in this repo, so it is written to be read by either. If
@@ -155,8 +158,9 @@ recency-weighted and length-capped.
 
 Two things that are easy to get wrong and cheap to get right:
 
-- **Design reasoning goes in the commit message**, and anything durable goes into
-  CLAUDE.md next to the claim it extends. There is no design-docs directory.
+- **Design reasoning goes in the commit message.** A durable *rule* goes into CLAUDE.md
+  next to the claim it extends; the *evidence* for it goes into `docs/DESIGN.md` in the
+  same commit. Those two files are the only docs — there is no design-plans directory.
 - **`takes/` is never committed.** It is raw microphone audio. `.gitignore` is the
   fence and the pre-commit hook is the lock — wire it (setup step 6), because a
   recording committed once is in history permanently.
